@@ -48,7 +48,7 @@
       <h2>2. Férias e subsídios</h2>
       <div class="grid cols-2">
         <label>Dias remunerados no mês final<input id="salaryDays" type="number" min="0" max="30" step="1" value="30"></label>
-        <label>Férias gozadas no ano da cessação (dias úteis)<input id="vacationTakenYear" type="number" min="0" max="30" step="0.5" value="0"></label>
+        <label>Férias já gozadas (dias úteis)<input id="vacationTakenYear" type="number" min="0" max="30" step="0.5" value="0"></label>
         <label>Regime de pagamento dos subsídios
           <select id="subsidyMode">
             <option value="full" selected>100% pagos por inteiro</option>
@@ -58,7 +58,7 @@
         </label>
         <label id="holidayReceivedWrap"><span id="holidayReceivedLabel">Subsídio de férias já recebido por inteiro (€)</span><input id="holidayReceived" type="number" min="0" step="0.01" value="0"></label>
         <label id="christmasReceivedWrap"><span>Subsídio de Natal já recebido / adiantado (€)</span><input id="christmasReceived" type="number" min="0" step="0.01" value="0"></label>
-        <label id="specialVacationTakenWrap" hidden>Dias de férias já gozados desde a admissão<input id="vacationTakenContract" type="number" min="0" max="60" step="0.5" value="0"><small>Usado apenas quando se aplica o limite do artigo 245.º, n.º 3.</small></label>
+        <label id="specialVacationTakenWrap" hidden>Campo legado (não usado)<input id="vacationTakenContract" type="number" min="0" max="60" step="0.5" value="0"><small>Usado apenas quando se aplica o limite do artigo 245.º, n.º 3.</small></label>
       </div>
       <p id="subsidyHint" class="hint"></p>
       <div class="metrics inline-metrics">
@@ -125,6 +125,7 @@
         </div>
 
         <div class="metrics">
+          <div><span>Montante global comparável à ACT</span><strong id="actGrossTotal">€0,00</strong></div>
           <div><span>Compensação total</span><strong id="compTotal">€0,00</strong></div>
           <div><span>Limite não tributado (CIRS 2.º/4)</span><strong id="compExemptLimit">€0,00</strong></div>
           <div><span>Compensação sujeita a IRS</span><strong id="compTaxable">€0,00</strong></div>

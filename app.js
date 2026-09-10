@@ -131,7 +131,7 @@ function addCalendarMonths(d, months){
 // Compatibilidade com o simulador ACT: os proporcionais são calculados por
 // proporcionalidade direta do tempo trabalhado, convertendo a duração civil
 // em meses + dias. Ex.: 01/01 a 24/12 => 11 meses + 24 dias => 11/12 + 24/365.
-function actDirectFraction(periodStart,end){
+function actCivilFraction(periodStart,end,residualDayDenominator=365){
   const endExclusive=new Date(end.getTime()+dayMs);
   if(endExclusive<=periodStart) return 0;
   let months=(endExclusive.getFullYear()-periodStart.getFullYear())*12 + (endExclusive.getMonth()-periodStart.getMonth());
@@ -139,7 +139,17 @@ function actDirectFraction(periodStart,end){
   while(cursor>endExclusive && months>0){ months--; cursor=addCalendarMonths(periodStart,months); }
   while(addCalendarMonths(periodStart,months+1)<=endExclusive){ months++; cursor=addCalendarMonths(periodStart,months); }
   const remDays=Math.max(0,Math.round(daysBetween(cursor,endExclusive)));
-  return Math.max(0,months/12 + remDays/365);
+  return Math.max(0,months/12 + remDays/residualDayDenominator);
+}
+
+function actDirectFraction(periodStart,end){
+  // Férias/subsídios: convenção observada no simulador ACT, meses/12 + dias/365.
+  return actCivilFraction(periodStart,end,365);
+}
+
+function actCompensationFraction(periodStart,end){
+    // valorizado sobre 360 dias: 1 ano + 3 meses + 1/360.
+  return actCivilFraction(periodStart,end,360);
 }
 
 function cessationYearFraction(start,end){
@@ -150,12 +160,12 @@ function cessationYearFraction(start,end){
 }
 
 function contractVacationFraction(start,end){
-  // Used only for the special cap in CT art. 245.º/3. The cap is proportional
-  // to the total duration of the contract, applying the 22-day annual reference.
-  return Math.max(0,daysBetween(start,new Date(end.getTime()+dayMs))/365.2425);
+  // Compatibilidade ACT para o limite do art. 245.º/3:
+  // duração civil total em meses + dias (meses/12 + dias/365).
+    return Math.max(0,actDirectFraction(start,end));
 }
 
-function vacationModel(start,end,monthly){
+function vacationModel(start,end,baseMonthly){
   if(!els.startDate.value||!els.endDate.value||end<start) return {special:false,vestedDays:0,propDays:0,vestedValue:0,propValue:0,fraction:0};
   const annualDays=22;
   const fraction=cessationYearFraction(start,end);
@@ -168,31 +178,38 @@ function vacationModel(start,end,monthly){
   const special=isShortVacationCase(start,end);
   let capApplied=false;
   let capDays=null;
+  let vestedValue=round2(baseMonthly*vestedDays/annualDays);
+  let propValue=round2(baseMonthly*propDueDays/annualDays);
+  let totalVacationEntitlementValue=null;
 
   if(special){
-    capDays=annualDays*contractVacationFraction(start,end);
-    const takenContract=end.getFullYear()===start.getFullYear()
-      ? takenYear
-      : Math.max(0,num('vacationTakenContract'));
-    const totalDueDays=Math.max(0,capDays-takenContract);
-    // Under art. 245.º/3 the total vacation entitlement/remuneration is capped.
-    // We aggregate the remaining entitlement in the proportional line to avoid
-    // double counting a vested 22-day block plus the cessation-year proportional.
+    // Art. 245.º/3 — compatibilidade com o caso de referência ACT:
+    // direito monetário total = remuneração base × duração proporcional do contrato.
+    // Os dias já gozados são abatidos a RB/22 por dia.
+    const contractFraction=contractVacationFraction(start,end);
+    capDays=annualDays*contractFraction;
+    totalVacationEntitlementValue=round2(baseMonthly*contractFraction);
+
+    const takenContract=takenYear;
+    const takenValue=round2(takenContract*(baseMonthly/annualDays));
+    const totalDueValue=Math.max(0,round2(totalVacationEntitlementValue-takenValue));
+
     vestedDays=0;
-    propDueDays=totalDueDays;
+    propDueDays=Math.max(0,capDays-takenContract);
+    vestedValue=0;
+    propValue=totalDueValue;
     capApplied=true;
   }
 
   return {
-    special,capApplied,capDays,fraction,
+    special,capApplied,capDays,fraction,totalVacationEntitlementValue,
     vestedDays:round2(vestedDays),
     propDays:round2(propDueDays),
     theoreticalPropDays:round2(propDays),
-    vestedValue:round2(monthly*vestedDays/annualDays),
-    propValue:round2(monthly*propDueDays/annualDays)
+    vestedValue,
+    propValue
   };
 }
-
 function priorDuodecimosFactor(start,end){
   // Estimates amounts already processed before the final payroll month.
   // For a worker already employed at 1 January this is exactly N completed
@@ -234,6 +251,16 @@ function calculateLegalComp(){
   let daysEquivalent=0;
 
   const D=(s)=>date(s);
+
+  // Contratos integralmente abrangidos pelos 14 dias/ano:
+  // usar a convenção civil observada no simulador ACT.
+  if(start>=D('2023-05-01')){
+    const fraction=actCompensationFraction(start,end);
+    let total=daily*14*fraction;
+    total=Math.min(total,12*salary,240*RMMG);
+    return round2(total);
+  }
+
   // Historic transitional segments for indefinite contracts. Fraction of year calculated proportionally.
   if(start < D('2011-11-01')){
     const d=overlapDays(start,endExclusive,start,D('2012-11-01'));
@@ -292,7 +319,7 @@ function recalc(forceComp=false,renderTraining=true){
   if(status==='single0') els.dependents.value=0;
 
   const salaryGross=monthly*clamp(num('salaryDays'),0,30)/30;
-  const vac=vacationModel(start,end,monthly);
+  const vac=vacationModel(start,end,base);
   const vacationVestedGross=vac.vestedValue;
   const vacationPropGross=vac.propValue;
 
@@ -300,8 +327,13 @@ function recalc(forceComp=false,renderTraining=true){
   // No regime sem duodécimos, o valor já recebido abate apenas ao subsídio vencido,
   // não ao proporcional gerado no ano da cessação.
   const hasVestedAnnualHoliday = !vac.special && start < new Date(end.getFullYear(),0,1,12);
-  const vestedHolidayAllowanceEntitlement = hasVestedAnnualHoliday ? monthly : 0;
-  const proportionalHolidayAllowanceEntitlement = vacationPropGross;
+  const vestedHolidayAllowanceEntitlement = hasVestedAnnualHoliday ? base : 0;
+  // No limite especial do art. 245.º/3, a ACT calcula um direito total de férias/
+  // subsídio para toda a duração do contrato. O que já foi recebido em subsídio
+  // é abatido a esse direito total.
+  const proportionalHolidayAllowanceEntitlement = vac.special
+    ? round2(vac.totalVacationEntitlementValue || 0)
+    : vacationPropGross;
   const christmasEntitlement=round2(monthly*vac.fraction);
   const mode=els.subsidyMode.value;
   const priorFactor=priorDuodecimosFactor(start,end);
@@ -317,8 +349,14 @@ function recalc(forceComp=false,renderTraining=true){
   let proportionalHolidayAllowanceDue=proportionalHolidayAllowanceEntitlement;
   let christmasDue=0;
   if(mode==='full'){
-    vestedHolidayAllowanceDue=Math.max(0,round2(vestedHolidayAllowanceEntitlement-holidayLumpPaid));
-    // Tal como na ACT, o subsídio já recebido não é abatido ao proporcional do ano.
+    if(vac.special){
+      vestedHolidayAllowanceDue=0;
+      proportionalHolidayAllowanceDue=Math.max(0,round2(proportionalHolidayAllowanceEntitlement-holidayLumpPaid));
+    } else {
+      vestedHolidayAllowanceDue=Math.max(0,round2(vestedHolidayAllowanceEntitlement-holidayLumpPaid));
+      // Fora do limite especial, a ACT mantém separado o proporcional do ano.
+      proportionalHolidayAllowanceDue=proportionalHolidayAllowanceEntitlement;
+    }
     christmasDue=Math.max(0,round2(christmasEntitlement-christmasLumpPaid));
   } else {
     // Nos regimes com duodécimos, os pagamentos prévios são abatidos ao direito
@@ -333,8 +371,24 @@ function recalc(forceComp=false,renderTraining=true){
   const holidayAllowanceDue=round2(vestedHolidayAllowanceDue+proportionalHolidayAllowanceDue);
   const holidayAllowanceEntitlement=round2(vestedHolidayAllowanceEntitlement+proportionalHolidayAllowanceEntitlement);
 
-  els.vestedVacationDaysPreview.textContent=`${vac.vestedDays.toFixed(2)} dias`;
-  els.proportionalVacationDaysPreview.textContent=`${vac.propDays.toFixed(2)} dias`;
+  // Total comparável ao "Montante global" do simulador ACT:
+  // compensação + férias + subsídio de férias + subsídio de Natal.
+  // Não inclui salário do mês, formação, IRS/SS ou compensação extra manual.
+  const actGrossTotal=round2(
+    num('legalComp') +
+    vacationVestedGross + vacationPropGross +
+    holidayAllowanceDue +
+    christmasDue
+  );
+  if(els.actGrossTotal) els.actGrossTotal.textContent=eurFmt.format(actGrossTotal);
+
+  if(vac.special){
+    els.vestedVacationDaysPreview.textContent='incluído no limite global';
+    els.proportionalVacationDaysPreview.textContent=`${vac.propDays.toFixed(2)} dias equivalentes`;
+  } else {
+    els.vestedVacationDaysPreview.textContent=`${vac.vestedDays.toFixed(2)} dias`;
+    els.proportionalVacationDaysPreview.textContent=`${vac.propDays.toFixed(2)} dias`;
+  }
   els.cessationYearFractionPreview.textContent=new Intl.NumberFormat('pt-PT',{style:'percent',minimumFractionDigits:2,maximumFractionDigits:2}).format(vac.fraction);
 
   const trainingHours=totalTrainingDebt();
@@ -370,7 +424,7 @@ function recalc(forceComp=false,renderTraining=true){
 
   const warnings=[];
   if(start<date('2013-10-01')) warnings.push('Contrato anterior a 1/10/2013: o regime transitório da compensação tem limites e particularidades. Confirma o valor no simulador da ACT; o campo continua editável.');
-  if(vac.capApplied) warnings.push(`Férias: foi aplicado o limite especial do artigo 245.º, n.º 3. O teto estimado para a duração total do contrato é ${vac.capDays.toFixed(2)} dias; confirma os dias gozados desde a admissão.`);
+  if(vac.capApplied) warnings.push(`Férias: aplicado o limite especial do artigo 245.º, n.º 3. Direito global estimado ${eurFmt.format(vac.totalVacationEntitlementValue||0)}; os dias já gozados são abatidos a ${eurFmt.format(base/22)} por dia.`);
   else warnings.push('Férias: foram considerados 22 dias vencidos a 1 de janeiro (quando aplicável), abatendo os dias gozados, e os proporcionais segundo a proporcionalidade direta usada pela ACT (meses/12 + dias/365).');
   if(mode!=='full') warnings.push(`Subsídios: foram estimados ${eurFmt.format(holidayDuosPaid)} de subsídio de férias e ${eurFmt.format(christmasDuosPaid)} de subsídio de Natal já pagos em duodécimos antes do recibo final.`);
   if(els.usedRelief5y.checked) warnings.push('Assinalaste utilização do regime fiscal nos últimos 5 anos: nesta simulação a compensação é tratada como totalmente tributável para IRS.');
