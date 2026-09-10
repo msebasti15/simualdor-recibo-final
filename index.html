@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulador de Recibo Final — Portugal</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">PORTUGAL · 2026</div>
+      <h1>Simulador de Recibo Final</h1>
+      <p>Estimativa de créditos laborais, compensação, formação, IRS e Segurança Social — 100% no browser.</p>
+    </div>
+    <span class="badge">Sem backend</span>
+  </header>
+
+  <main class="layout">
+    <section class="panel form-panel">
+      <div class="notice">
+        <strong>Versão inicial:</strong> otimizada para trabalhador por conta de outrem, residente no Continente, sem deficiência, com contrato sem termo e cessação em 2026 por despedimento coletivo, extinção do posto de trabalho ou inadaptação.
+      </div>
+
+      <h2>1. Contrato e remuneração</h2>
+      <div class="grid cols-2">
+        <label>Data de admissão<input id="startDate" type="date" value="2021-05-01"></label>
+        <label>Data de cessação<input id="endDate" type="date" value="2026-09-30"></label>
+        <label>Remuneração base mensal (€)<input id="baseSalary" type="number" min="0" step="0.01" value="4500"></label>
+        <label>Diuturnidades mensais (€)<input id="seniorityPay" type="number" min="0" step="0.01" value="0"></label>
+        <label>Média remunerações regulares tributáveis — últimos 12 meses (€)<input id="avg12" type="number" min="0" step="0.01" value="4500"></label>
+        <label>Motivo da cessação
+          <select id="terminationReason">
+            <option value="collective">Despedimento coletivo</option>
+            <option value="extinction" selected>Extinção do posto de trabalho</option>
+            <option value="inadaptation">Despedimento por inadaptação</option>
+          </select>
+        </label>
+      </div>
+
+      <h2>2. Valores de cessação</h2>
+      <div class="grid cols-2">
+        <label>Dias remunerados no mês final<input id="salaryDays" type="number" min="0" max="30" step="1" value="30"></label>
+        <label>Dias de férias vencidas/não gozadas<input id="vacationDays" type="number" min="0" step="0.5" value="0"></label>
+        <label>Subsídio de Natal proporcional — meses equivalentes<input id="christmasMonths" type="number" min="0" max="12" step="0.01" value="9"></label>
+        <label>Subsídio de férias proporcional — meses equivalentes<input id="holidayMonths" type="number" min="0" max="12" step="0.01" value="9"></label>
+      </div>
+      <p class="hint">Os campos proporcionais podem ser afinados manualmente para refletir a situação concreta. O cálculo automático usa remuneração mensal × meses/12.</p>
+
+      <h2>3. Compensação e formação</h2>
+      <div class="grid cols-2">
+        <label>Compensação mínima calculada (€)
+          <div class="input-with-action"><input id="legalComp" type="number" min="0" step="0.01"><button id="useAutoComp" type="button">Recalcular</button></div>
+        </label>
+        <label>Compensação adicional / acordo (€)<input id="extraComp" type="number" min="0" step="0.01" value="0"></label>
+        <label>Horas de formação em dívida<input id="trainingHours" type="number" min="0" step="1" value="0"></label>
+        <label>Valor hora para formação (€)<input id="trainingHourly" type="number" min="0" step="0.01"></label>
+      </div>
+      <p class="hint">A compensação legal é estimada localmente. Para contratos anteriores a 2013, CCTs ou situações especiais, confirma o valor com o simulador ACT e podes substituir manualmente o campo.</p>
+
+      <h2>4. IRS</h2>
+      <div class="grid cols-2">
+        <label>Situação familiar
+          <select id="taxStatus">
+            <option value="single0">Não casado, sem dependentes</option>
+            <option value="singleDeps">Não casado, com dependente(s)</option>
+            <option value="married2">Casado, dois titulares</option>
+            <option value="married1">Casado, único titular</option>
+          </select>
+        </label>
+        <label>Número de dependentes<input id="dependents" type="number" min="0" step="1" value="0"></label>
+        <label>Região<select id="region"><option value="continent">Continente</option></select></label>
+        <label class="check"><input id="usedRelief5y" type="checkbox"> Beneficiou do regime de não tributação de compensação nos últimos 5 anos</label>
+        <label class="check"><input id="newLink24m" type="checkbox"> Prevê novo vínculo profissional/empresarial com a mesma entidade nos 24 meses seguintes</label>
+      </div>
+
+      <details>
+        <summary>Opções avançadas</summary>
+        <div class="grid cols-2 advanced">
+          <label>Segurança Social trabalhador (%)<input id="ssRate" type="number" min="0" step="0.01" value="11"></label>
+          <label>Override IRS sobre compensação tributável (€)<input id="compTaxOverride" type="number" min="0" step="0.01" placeholder="Automático"></label>
+        </div>
+      </details>
+    </section>
+
+    <aside class="panel results-panel">
+      <div class="sticky">
+        <div class="summary-card">
+          <span>Valor líquido estimado</span>
+          <strong id="netTotal">€0,00</strong>
+          <small id="grossSummary">Bruto €0,00 · Descontos €0,00</small>
+        </div>
+
+        <div class="metrics">
+          <div><span>Compensação total</span><strong id="compTotal">€0,00</strong></div>
+          <div><span>Limite não tributado (CIRS 2.º/4)</span><strong id="compExemptLimit">€0,00</strong></div>
+          <div><span>Compensação sujeita a IRS</span><strong id="compTaxable">€0,00</strong></div>
+          <div><span>Antiguidade fiscal</span><strong id="serviceYears">0,00 anos</strong></div>
+        </div>
+
+        <h3>Detalhe do recibo</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Rubrica</th><th>Bruto</th><th>IRS</th><th>SS</th><th>Líquido</th></tr></thead>
+            <tbody id="lines"></tbody>
+            <tfoot><tr><th>Total</th><th id="tGross"></th><th id="tIRS"></th><th id="tSS"></th><th id="tNet"></th></tr></tfoot>
+          </table>
+        </div>
+
+        <div id="warnings" class="warnings"></div>
+        <button id="printBtn" class="primary" type="button">Imprimir / Guardar PDF</button>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <p><strong>Nota:</strong> ferramenta de simulação, não substitui validação jurídica/fiscal nem o cálculo oficial da entidade empregadora. Retenção na fonte ≠ IRS final anual.</p>
+    <p>Fontes jurídicas usadas nesta versão: Código do Trabalho (arts. 131.º–134.º e 366.º), Lei n.º 69/2013, Lei n.º 13/2023, Código Contributivo (arts. 46.º e 48.º), CIRS art. 2.º n.º 4 e Despacho n.º 233-A/2026.</p>
+  </footer>
+<script src="app.js"></script>
+</body>
+</html>
