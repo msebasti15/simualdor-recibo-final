@@ -47,3 +47,34 @@ Foram acrescentadas rubricas para:
 A retenção de IRS da remuneração mensal, da parcela tributável do subsídio de alimentação e das outras verbas IRS-only é calculada sobre a respetiva base tributável conjunta e depois repartida pelas linhas para apresentação.
 
 A classificação fiscal/contributiva de subsídios de teletrabalho, transporte e outras verbas depende da natureza concreta do pagamento. O campo “apenas IRS” é, por isso, uma opção explícita do utilizador e não uma classificação automática.
+
+
+## v9 — motor fiscal por grupos de retenção
+
+A retenção deixou de ser calculada isoladamente rubrica a rubrica.
+
+### Grupo normal de Categoria A
+São agregadas numa única base de retenção, quando aplicável:
+- remuneração do mês final;
+- parcela tributável do subsídio de alimentação;
+- outros abonos classificados como sujeitos a IRS;
+- remuneração de férias não gozadas / férias proporcionais;
+- créditos de formação;
+- parte tributável da compensação legal;
+- parte tributável incremental da compensação extra.
+
+A tabela de retenção de 2026 é aplicada uma vez à base agregada. O IRS mostrado em cada linha é depois repartido proporcionalmente pelas bases tributáveis apenas para apresentação.
+
+### Subsídios
+Subsídio de férias e subsídio de Natal são tratados com retenção autónoma. Quando apenas parte de um subsídio é paga no recibo final, é aplicada a proporção do imposto calculado sobre o respetivo direito de referência.
+
+### Comparativo com / sem compensação extra
+O cenário sem extra recalcula a base normal e a retenção respetiva, em vez de simplesmente subtrair o valor bruto da compensação adicional.
+
+### Segurança Social
+A incidência contributiva continua a ser apurada por rubrica:
+- remuneração, férias e subsídios: sujeitos;
+- créditos de formação: sem incidência, seguindo o acórdão TCAS de 26-09-2024;
+- compensações de cessação nos motivos atualmente suportados pelo simulador: sem incidência;
+- subsídio de alimentação: apenas a parcela indicada como sujeita;
+- outros valores: conforme classificação manual apresentada na interface.

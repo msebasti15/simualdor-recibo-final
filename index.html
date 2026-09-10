@@ -32,10 +32,10 @@
             <option value="uncertain">Contrato a termo incerto</option>
           </select>
         </label>
-        <label>Data de cessação<input id="endDate" type="date" value="2026-09-30"></label>
-        <label>Remuneração base mensal (€)<input id="baseSalary" type="number" min="0" step="0.01" value="4500"></label>
+        <label>Data de cessação<input id="endDate" type="date" value="2026-10-15"></label>
+        <label>Remuneração base mensal (€)<input id="baseSalary" type="number" min="0" step="0.01" value="3000"></label>
         <label>Diuturnidades mensais (€)<input id="seniorityPay" type="number" min="0" step="0.01" value="0"></label>
-        <label>Média remunerações regulares tributáveis — últimos 12 meses (€)<input id="avg12" type="number" min="0" step="0.01" value="4500"></label>
+        <label>Média remunerações regulares tributáveis — últimos 12 meses (€)<input id="avg12" type="number" min="0" step="0.01" value="3000"></label>
         <label>Motivo da cessação
           <select id="terminationReason">
             <option value="collective">Despedimento coletivo</option>
@@ -70,7 +70,6 @@
         </label>
         <label id="holidayReceivedWrap"><span id="holidayReceivedLabel">Subsídio de férias já recebido por inteiro (€)</span><input id="holidayReceived" type="number" min="0" step="0.01" value="0"></label>
         <label id="christmasReceivedWrap"><span>Subsídio de Natal já recebido / adiantado (€)</span><input id="christmasReceived" type="number" min="0" step="0.01" value="0"></label>
-        <label id="specialVacationTakenWrap" hidden>Campo legado (não usado)<input id="vacationTakenContract" type="number" min="0" max="60" step="0.5" value="0"><small>Usado apenas quando se aplica o limite do artigo 245.º, n.º 3.</small></label>
       </div>
       <p id="subsidyHint" class="hint"></p>
       <div class="metrics inline-metrics">
@@ -123,7 +122,7 @@
         <summary>Opções avançadas</summary>
         <div class="grid cols-2 advanced">
           <label>Segurança Social trabalhador (%)<input id="ssRate" type="number" min="0" step="0.01" value="11"></label>
-          <label>Override IRS sobre compensação tributável (€)<input id="compTaxOverride" type="number" min="0" step="0.01" placeholder="Automático"></label>
+          <label>Override IRS total do grupo normal (€)<input id="compTaxOverride" type="number" min="0" step="0.01" placeholder="Automático"></label>
         </div>
       </details>
     </section>

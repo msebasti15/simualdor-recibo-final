@@ -227,7 +227,6 @@ function updateSubsidyUI(start=null,end=null){
   const asksLump=mode!=='duodecimos';
   els.holidayReceivedWrap.hidden=!asksLump;
   els.christmasReceivedWrap.hidden=!asksLump;
-  if(start&&end&&end>=start) els.specialVacationTakenWrap.hidden=!isShortVacationCase(start,end);
 
   if(mode==='full'){
     els.holidayReceivedLabel.textContent='Subsídio de férias já recebido por inteiro (€)';
@@ -306,6 +305,33 @@ function addLine(lines,name,gross,irsValue,ssBase,meta='',group='salary'){
   return line;
 }
 
+function proportionalAutonomousIrs(entitlement,due,status,deps){
+  entitlement=Math.max(0,round2(entitlement));
+  due=clamp(round2(due),0,entitlement);
+  if(entitlement<=0 || due<=0) return 0;
+  // CIRS 99.º-C/6: quando o subsídio é fracionado, retém-se em cada
+  // pagamento a parte proporcional do imposto calculado sobre o subsídio.
+  return round2(irs(entitlement,status,deps)*(due/entitlement));
+}
+
+function allocateTax(totalTax, items){
+  const totalBase=round2(items.reduce((s,i)=>s+Math.max(0,i.taxBase||0),0));
+  const out={};
+  if(totalTax<=0 || totalBase<=0){
+    items.forEach(i=>out[i.key]=0);
+    return out;
+  }
+  let allocated=0;
+  items.forEach((item,idx)=>{
+    const value = idx===items.length-1
+      ? round2(totalTax-allocated)
+      : round2(totalTax*(Math.max(0,item.taxBase||0)/totalBase));
+    out[item.key]=Math.max(0,value);
+    allocated=round2(allocated+out[item.key]);
+  });
+  return out;
+}
+
 function recalc(forceComp=false,renderTraining=true){
   const validDates=els.startDate.value&&els.endDate.value;
   const start=validDates?date(els.startDate.value):new Date(), end=validDates?date(els.endDate.value):new Date();
@@ -324,16 +350,6 @@ function recalc(forceComp=false,renderTraining=true){
   const mealAllowance=Math.max(0,num('mealAllowance'));
   const mealAllowanceTaxable=clamp(num('mealAllowanceTaxable'),0,mealAllowance);
   const otherIrsOnly=Math.max(0,num('otherIrsOnly'));
-
-  // Retenção do bloco do último salário: remuneração + parcela tributável do
-  // subsídio de alimentação + outras verbas sujeitas apenas a IRS.
-  // A parcela isenta do subsídio de alimentação continua no líquido/bruto,
-  // mas não entra na base de IRS/SS.
-  const finalSalaryTaxable=round2(salaryGross+mealAllowanceTaxable+otherIrsOnly);
-  const finalSalaryIrs=irs(finalSalaryTaxable,status,deps);
-  const salaryBaseIrs=finalSalaryTaxable>0 ? round2(finalSalaryIrs*(salaryGross/finalSalaryTaxable)) : 0;
-  const mealIrs=finalSalaryTaxable>0 ? round2(finalSalaryIrs*(mealAllowanceTaxable/finalSalaryTaxable)) : 0;
-  const otherIrs=round2(Math.max(0,finalSalaryIrs-salaryBaseIrs-mealIrs));
 
   const vac=vacationModel(start,end,base);
   const vacationVestedGross=vac.vestedValue;
@@ -409,46 +425,105 @@ function recalc(forceComp=false,renderTraining=true){
 
   const trainingHours=totalTrainingDebt();
   const trainingGross=round2(trainingHours*trainingHourly);
-  const legalComp=num('legalComp'), extraComp=num('extraComp'), compensation=legalComp+extraComp;
+  const legalComp=num('legalComp'), extraComp=num('extraComp'), compensation=round2(legalComp+extraComp);
 
   const service=validDates&&end>start?yearsExact(start,new Date(end.getTime()+dayMs)):0;
   let exemptLimit=num('avg12')*service;
   if(els.usedRelief5y.checked||els.newLink24m.checked) exemptLimit=0;
-  const taxableComp=Math.max(0,compensation-exemptLimit);
-  const taxableLegalComp=Math.max(0,legalComp-exemptLimit);
-  const compIrsOverride=els.compTaxOverride.value.trim()===''?null:num('compTaxOverride');
-  const totalCompIrs=round2(compIrsOverride??irs(taxableComp,status,deps));
 
-  // Para permitir comparar corretamente o líquido com/sem indemnização extra,
-  // separamos o IRS da compensação legal e da parcela adicional. Sem override,
-  // a parcela extra suporta exatamente o incremento de retenção causado pelo extra.
-  let legalCompIrs=0;
-  let extraCompIrs=0;
-  if(compIrsOverride===null){
-    legalCompIrs=round2(irs(taxableLegalComp,status,deps));
-    extraCompIrs=round2(Math.max(0,totalCompIrs-legalCompIrs));
-  } else if(taxableComp>0){
-    legalCompIrs=round2(totalCompIrs*(taxableLegalComp/taxableComp));
-    extraCompIrs=round2(Math.max(0,totalCompIrs-legalCompIrs));
-  }
+  // CIRS 2.º/4: apenas o excesso da compensação sobre o limite fiscal integra
+  // a base tributável. O direito vencido (salário, férias, subsídios) fica fora
+  // desta exclusão e segue as regras normais.
+  const taxableComp=Math.max(0,round2(compensation-exemptLimit));
+  const taxableLegalComp=Math.max(0,round2(legalComp-exemptLimit));
+  const taxableExtraComp=Math.max(0,round2(taxableComp-taxableLegalComp));
+
+  // Grupo normal de retenção mensal (CIRS 99.º-C/1-4).
+  // Subsídios de férias e Natal ficam fora: têm retenção autónoma.
+  const normalItemsWithExtra=[
+    {key:'salary',taxBase:salaryGross},
+    {key:'meal',taxBase:mealAllowanceTaxable},
+    {key:'other',taxBase:otherIrsOnly},
+    {key:'vacVested',taxBase:vacationVestedGross},
+    {key:'vacProp',taxBase:vacationPropGross},
+    {key:'training',taxBase:trainingGross},
+    {key:'legalComp',taxBase:taxableLegalComp},
+    {key:'extraComp',taxBase:taxableExtraComp}
+  ];
+  const normalTaxBaseWithExtra=round2(normalItemsWithExtra.reduce((s,i)=>s+i.taxBase,0));
+
+  const normalItemsWithoutExtra=normalItemsWithExtra.filter(i=>i.key!=='extraComp');
+  const normalTaxBaseWithoutExtra=round2(normalItemsWithoutExtra.reduce((s,i)=>s+i.taxBase,0));
+
+  const normalIrsOverride=els.compTaxOverride.value.trim()===''?null:num('compTaxOverride');
+  const normalIrsWithExtra=round2(normalIrsOverride??irs(normalTaxBaseWithExtra,status,deps));
+  const normalIrsWithoutExtra=round2(irs(normalTaxBaseWithoutExtra,status,deps));
+  const normalAlloc=allocateTax(normalIrsWithExtra,normalItemsWithExtra);
+
+  // Retenção autónoma dos subsídios. Quando apenas uma parte é paga no fecho,
+  // aplica-se a proporção do imposto correspondente ao direito de referência.
+  const vestedHolidayIrs=proportionalAutonomousIrs(
+    vestedHolidayAllowanceEntitlement,
+    vestedHolidayAllowanceDue,
+    status,deps
+  );
+  const proportionalHolidayIrs=proportionalAutonomousIrs(
+    proportionalHolidayAllowanceEntitlement,
+    proportionalHolidayAllowanceDue,
+    status,deps
+  );
+  const christmasIrs=proportionalAutonomousIrs(
+    christmasEntitlement,
+    christmasDue,
+    status,deps
+  );
 
   const lines=[];
-  addLine(lines,'Remuneração mês final',salaryGross,salaryBaseIrs,salaryGross,'','salary');
+  addLine(lines,'Remuneração mês final',salaryGross,normalAlloc.salary,salaryGross,
+    `Grupo normal IRS · base atribuída ${eurFmt.format(salaryGross)}`,'salary');
+
   if(mealAllowance>0)
-    addLine(lines,'Subsídio de alimentação',mealAllowance,mealIrs,mealAllowanceTaxable,
-      `Parcela sujeita a IRS/SS ${eurFmt.format(mealAllowanceTaxable)} · parcela isenta ${eurFmt.format(mealAllowance-mealAllowanceTaxable)}`,'salary');
+    addLine(lines,'Subsídio de alimentação',mealAllowance,normalAlloc.meal,mealAllowanceTaxable,
+      `Grupo normal IRS apenas sobre ${eurFmt.format(mealAllowanceTaxable)} · parcela isenta ${eurFmt.format(mealAllowance-mealAllowanceTaxable)}`,'salary');
+
   if(otherIrsOnly>0)
-    addLine(lines,'Outros valores — apenas IRS',otherIrsOnly,otherIrs,0,
-      'Incluído na retenção do último salário · sem incidência de SS conforme indicação do utilizador','salary');
-  if(vacationVestedGross>0) addLine(lines,'Férias vencidas / não gozadas',vacationVestedGross,irs(vacationVestedGross,status,deps),vacationVestedGross,`${vac.vestedDays.toFixed(2)} dias`,'salary');
-  addLine(lines,vac.special?'Férias devidas na cessação':'Férias proporcionais — ano da cessação',vacationPropGross,irs(vacationPropGross,status,deps),vacationPropGross,`${vac.propDays.toFixed(2)} dias${vac.capApplied?' · limite art. 245.º/3 aplicado':''}`,'salary');
+    addLine(lines,'Outros valores — apenas IRS',otherIrsOnly,normalAlloc.other,0,
+      'Grupo normal IRS · sem incidência de SS conforme classificação manual','salary');
+
+  if(vacationVestedGross>0)
+    addLine(lines,'Férias vencidas / não gozadas',vacationVestedGross,normalAlloc.vacVested,vacationVestedGross,
+      `${vac.vestedDays.toFixed(2)} dias · grupo normal IRS`,'salary');
+
+  if(vacationPropGross>0)
+    addLine(lines,vac.special?'Férias devidas na cessação':'Férias proporcionais — ano da cessação',
+      vacationPropGross,normalAlloc.vacProp,vacationPropGross,
+      `${vac.propDays.toFixed(2)} dias${vac.capApplied?' · limite art. 245.º/3 aplicado':''} · grupo normal IRS`,'salary');
+
   if(vestedHolidayAllowanceEntitlement>0 || vestedHolidayAllowanceDue>0)
-    addLine(lines,'Subsídio de férias vencido — saldo',vestedHolidayAllowanceDue,irs(vestedHolidayAllowanceDue,status,deps),vestedHolidayAllowanceDue,`Direito ${eurFmt.format(vestedHolidayAllowanceEntitlement)} · já recebido ${eurFmt.format(mode==='full'?holidayLumpPaid:Math.min(vestedHolidayAllowanceEntitlement,holidayDuosPaid+holidayLumpPaid))}`,'salary');
-  addLine(lines,'Subsídio de férias proporcional',proportionalHolidayAllowanceDue,irs(proportionalHolidayAllowanceDue,status,deps),proportionalHolidayAllowanceDue,`Proporcional ACT ${eurFmt.format(proportionalHolidayAllowanceEntitlement)}`,'salary');
-  addLine(lines,'Subsídio de Natal proporcional — saldo',christmasDue,irs(christmasDue,status,deps),christmasDue,`Direito proporcional ${eurFmt.format(christmasEntitlement)} · já considerado pago ${eurFmt.format((mode==='full'?0:christmasDuosPaid)+christmasLumpPaid)}`,'salary');
-  addLine(lines,'Créditos de formação',trainingGross,irs(trainingGross,status,deps),0,'Sem SS na presente versão','training');
-  addLine(lines,'Indemnização legal',legalComp,legalCompIrs,0,`Parcela tributável estimada ${eurFmt.format(taxableLegalComp)}`,'legalComp');
-  if(extraComp>0) addLine(lines,'Indemnização extra',extraComp,extraCompIrs,0,'Valor adicional indicado manualmente','extraComp');
+    addLine(lines,'Subsídio de férias vencido — saldo',
+      vestedHolidayAllowanceDue,vestedHolidayIrs,vestedHolidayAllowanceDue,
+      `Retenção autónoma · direito ${eurFmt.format(vestedHolidayAllowanceEntitlement)} · saldo pago ${eurFmt.format(vestedHolidayAllowanceDue)}`,'salary');
+
+  if(proportionalHolidayAllowanceDue>0)
+    addLine(lines,'Subsídio de férias proporcional',
+      proportionalHolidayAllowanceDue,proportionalHolidayIrs,proportionalHolidayAllowanceDue,
+      `Retenção autónoma · direito de referência ${eurFmt.format(proportionalHolidayAllowanceEntitlement)}`,'salary');
+
+  if(christmasDue>0)
+    addLine(lines,'Subsídio de Natal proporcional — saldo',
+      christmasDue,christmasIrs,christmasDue,
+      `Retenção autónoma · direito proporcional ${eurFmt.format(christmasEntitlement)}`,'salary');
+
+  if(trainingGross>0)
+    addLine(lines,'Créditos de formação',trainingGross,normalAlloc.training,0,
+      'Categoria A no grupo normal IRS · sem SS segundo jurisprudência TCAS de 26-09-2024','training');
+
+  addLine(lines,'Indemnização legal',legalComp,normalAlloc.legalComp,0,
+    `Parcela sujeita a IRS ${eurFmt.format(taxableLegalComp)} · restante dentro do limite fiscal estimado`,'legalComp');
+
+  if(extraComp>0)
+    addLine(lines,'Indemnização extra',extraComp,normalAlloc.extraComp,0,
+      `Parcela incremental sujeita a IRS ${eurFmt.format(taxableExtraComp)} · integrada no grupo normal`,'extraComp');
 
   const totals=lines.reduce((a,l)=>({gross:a.gross+l.gross,irs:a.irs+l.irs,ss:a.ss+l.ss,net:a.net+l.net}),{gross:0,irs:0,ss:0,net:0});
   for(const k in totals) totals[k]=round2(totals[k]);
@@ -465,8 +540,16 @@ function recalc(forceComp=false,renderTraining=true){
   const trainingNet=groupNet('training');
   const legalCompNet=groupNet('legalComp');
   const extraCompNet=groupNet('extraComp');
-  const netWithoutExtra=round2(salaryRightsNet+trainingNet+legalCompNet);
-  const netWithExtra=round2(netWithoutExtra+extraCompNet);
+
+  const netWithExtra=totals.net;
+  // Cenário alternativo completo: retira o extra bruto e recalcula a retenção
+  // do grupo normal sem a parcela tributável incremental do extra.
+  const netWithoutExtra=round2(
+    totals.gross-extraComp
+    - totals.ss
+    - (totals.irs-normalIrsWithExtra+normalIrsWithoutExtra)
+  );
+  const netExtraDifference=round2(netWithExtra-netWithoutExtra);
 
   if(els.netSalaryRights) els.netSalaryRights.textContent=eurFmt.format(salaryRightsNet);
   if(els.netTraining) els.netTraining.textContent=eurFmt.format(trainingNet);
@@ -474,11 +557,12 @@ function recalc(forceComp=false,renderTraining=true){
   if(els.netExtraComp) els.netExtraComp.textContent=eurFmt.format(extraCompNet);
   if(els.netWithExtra) els.netWithExtra.textContent=eurFmt.format(netWithExtra);
   if(els.netWithoutExtra) els.netWithoutExtra.textContent=eurFmt.format(netWithoutExtra);
-  if(els.netExtraDifference) els.netExtraDifference.textContent=eurFmt.format(extraCompNet);
+  if(els.netExtraDifference) els.netExtraDifference.textContent=eurFmt.format(netExtraDifference);
   if(els.extraGrossHint) els.extraGrossHint.textContent=`Extra bruto ${eurFmt.format(extraComp)}`;
   if(els.netBreakdown && els.showNetBreakdown) els.netBreakdown.hidden=!els.showNetBreakdown.checked;
 
   const warnings=[];
+  warnings.push(`IRS: base normal agregada ${eurFmt.format(normalTaxBaseWithExtra)} → retenção estimada ${eurFmt.format(normalIrsWithExtra)}. Subsídios de férias e Natal são calculados autonomamente.`);
   if(otherIrsOnly>0) warnings.push('Outros valores do último salário: a aplicação assume, conforme indicado no campo, incidência em IRS e ausência de incidência em Segurança Social. Confirma a classificação da verba no recibo/contrato, porque a incidência depende da natureza concreta do pagamento.');
   if(mealAllowance>0 && mealAllowanceTaxable===0) warnings.push('Subsídio de alimentação: foi considerada isenta a totalidade do valor introduzido. Se existir uma parcela acima do limite de isenção aplicável, indica-a no campo “Parcela sujeita a IRS/SS”.');
   if(start<date('2013-10-01')) warnings.push('Contrato anterior a 1/10/2013: o regime transitório da compensação tem limites e particularidades. Confirma o valor no simulador da ACT; o campo continua editável.');
@@ -487,7 +571,7 @@ function recalc(forceComp=false,renderTraining=true){
   if(mode!=='full') warnings.push(`Subsídios: foram estimados ${eurFmt.format(holidayDuosPaid)} de subsídio de férias e ${eurFmt.format(christmasDuosPaid)} de subsídio de Natal já pagos em duodécimos antes do recibo final.`);
   if(els.usedRelief5y.checked) warnings.push('Assinalaste utilização do regime fiscal nos últimos 5 anos: nesta simulação a compensação é tratada como totalmente tributável para IRS.');
   if(els.newLink24m.checked) warnings.push('Assinalaste novo vínculo com a mesma entidade nos 24 meses seguintes: nesta simulação a compensação é tratada como totalmente tributável para IRS.');
-  if(compIrsOverride!==null && extraComp>0) warnings.push('Comparativo líquido com/sem indemnização extra: como foi usado um override manual de IRS na compensação, a retenção foi repartida proporcionalmente entre a parcela legal e a extra apenas para efeitos de apresentação.');
+  if(normalIrsOverride!==null) warnings.push('Foi usado um override manual para o IRS total do grupo normal. O cenário “sem extra” continua a ser recalculado automaticamente pelas tabelas de 2026, pelo que o comparativo deve ser interpretado como estimativa.');
   if(els.contractType.value==='indefinite') warnings.push('Formação: em modo ACT, o contrato sem termo considera 40 h por cada ano civil da janela, incluindo anos parciais.');
   else warnings.push('Formação: nos contratos a termo com duração igual ou superior a 3 meses, o artigo 131.º, n.º 2 prevê proporcionalidade no ano.');
   warnings.push('A retenção de IRS apresentada é uma estimativa do recibo; a liquidação anual de IRS pode produzir um resultado diferente.');
