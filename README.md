@@ -47,3 +47,13 @@ Todo o cálculo está em `app.js`. Nenhum dado sai do browser. Para uma versão 
 ## Limitações importantes
 
 Esta é uma ferramenta de simulação e reconciliação, não um parecer jurídico/fiscal. Contratos anteriores a 2013, instrumentos de regulamentação coletiva, regimes especiais, deficiência, Madeira/Açores e algumas modalidades de cessação exigem regras adicionais. A aplicação permite substituir manualmente a compensação para a comparar com o resultado oficial da ACT.
+
+
+## Alterações v4
+
+- Férias vencidas e proporcionais calculadas a partir das datas do contrato.
+- Campo de férias gozadas no ano da cessação.
+- Aplicação do limite especial do artigo 245.º, n.º 3, com campo adicional quando necessário.
+- Três regimes de subsídios: 100% integral, 50% duodécimos + 50% integral, e 100% duodécimos.
+- Os duodécimos são tratados como pagamentos já efetuados e abatidos aos direitos totais no fecho.
+- Subsídio de Natal proporcional calculado diretamente pelo tempo de serviço no ano da cessação.

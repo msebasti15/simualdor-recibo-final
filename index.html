@@ -19,12 +19,19 @@
   <main class="layout">
     <section class="panel form-panel">
       <div class="notice">
-        <strong>Versão inicial:</strong> otimizada para trabalhador por conta de outrem, residente no Continente, sem deficiência, com contrato sem termo e cessação em 2026 por despedimento coletivo, extinção do posto de trabalho ou inadaptação.
+        <strong>Versão v4:</strong> cálculo local de férias, subsídios, formação, compensação, IRS e Segurança Social. As férias e os proporcionais são agora derivados das datas do contrato e dos dias já gozados.
       </div>
 
       <h2>1. Contrato e remuneração</h2>
       <div class="grid cols-2">
         <label>Data de admissão<input id="startDate" type="date" value="2021-05-01"></label>
+        <label>Tipo de contrato
+          <select id="contractType">
+            <option value="indefinite" selected>Contrato sem termo</option>
+            <option value="fixed">Contrato a termo certo</option>
+            <option value="uncertain">Contrato a termo incerto</option>
+          </select>
+        </label>
         <label>Data de cessação<input id="endDate" type="date" value="2026-09-30"></label>
         <label>Remuneração base mensal (€)<input id="baseSalary" type="number" min="0" step="0.01" value="4500"></label>
         <label>Diuturnidades mensais (€)<input id="seniorityPay" type="number" min="0" step="0.01" value="0"></label>
@@ -38,27 +45,54 @@
         </label>
       </div>
 
-      <h2>2. Valores de cessação</h2>
+      <h2>2. Férias e subsídios</h2>
       <div class="grid cols-2">
         <label>Dias remunerados no mês final<input id="salaryDays" type="number" min="0" max="30" step="1" value="30"></label>
-        <label>Dias de férias vencidas/não gozadas<input id="vacationDays" type="number" min="0" step="0.5" value="0"></label>
-        <label>Subsídio de Natal proporcional — meses equivalentes<input id="christmasMonths" type="number" min="0" max="12" step="0.01" value="9"></label>
-        <label>Subsídio de férias proporcional — meses equivalentes<input id="holidayMonths" type="number" min="0" max="12" step="0.01" value="9"></label>
+        <label>Férias gozadas no ano da cessação (dias úteis)<input id="vacationTakenYear" type="number" min="0" max="30" step="0.5" value="0"></label>
+        <label>Regime de pagamento dos subsídios
+          <select id="subsidyMode">
+            <option value="full" selected>100% pagos por inteiro</option>
+            <option value="mixed">50% em duodécimos + 50% por inteiro</option>
+            <option value="duodecimos">100% em duodécimos</option>
+          </select>
+        </label>
+        <label id="holidayReceivedWrap">Subsídio de férias já recebido por inteiro (€)<input id="holidayReceived" type="number" min="0" step="0.01" value="0"></label>
+        <label id="christmasReceivedWrap">Subsídio de Natal já recebido / adiantado (€)<input id="christmasReceived" type="number" min="0" step="0.01" value="0"></label>
+        <label id="specialVacationTakenWrap" hidden>Dias de férias já gozados desde a admissão<input id="vacationTakenContract" type="number" min="0" max="60" step="0.5" value="0"><small>Usado apenas quando se aplica o limite do artigo 245.º, n.º 3.</small></label>
       </div>
-      <p class="hint">Os campos proporcionais podem ser afinados manualmente para refletir a situação concreta. O cálculo automático usa remuneração mensal × meses/12.</p>
+      <p id="subsidyHint" class="hint"></p>
+      <div class="metrics inline-metrics">
+        <div><span>Férias vencidas por gozar</span><strong id="vestedVacationDaysPreview">0,00 dias</strong></div>
+        <div><span>Férias proporcionais</span><strong id="proportionalVacationDaysPreview">0,00 dias</strong></div>
+        <div><span>Proporção do ano da cessação</span><strong id="cessationYearFractionPreview">0,00%</strong></div>
+      </div>
 
-      <h2>3. Compensação e formação</h2>
+      <h2>3. Compensação</h2>
       <div class="grid cols-2">
         <label>Compensação mínima calculada (€)
           <div class="input-with-action"><input id="legalComp" type="number" min="0" step="0.01"><button id="useAutoComp" type="button">Recalcular</button></div>
         </label>
         <label>Compensação adicional / acordo (€)<input id="extraComp" type="number" min="0" step="0.01" value="0"></label>
-        <label>Horas de formação em dívida<input id="trainingHours" type="number" min="0" step="1" value="0"></label>
-        <label>Valor hora para formação (€)<input id="trainingHourly" type="number" min="0" step="0.01"></label>
       </div>
       <p class="hint">A compensação legal é estimada localmente. Para contratos anteriores a 2013, CCTs ou situações especiais, confirma o valor com o simulador ACT e podes substituir manualmente o campo.</p>
 
-      <h2>4. IRS</h2>
+      <h2>4. Formação profissional</h2>
+      <p class="hint">São apresentados automaticamente os últimos 5 anos civis abrangidos pelo contrato, como no simulador da ACT. Em contrato sem termo, o modo ACT considera 40 h por ano civil, incluindo o ano parcial de admissão/cessação. Nos contratos a termo, o mínimo é proporcional à duração do contrato nesse ano. Indica as horas efetivamente ministradas; por defeito ficam a 0.</p>
+      <div class="training-table-wrap">
+        <table class="training-table">
+          <thead><tr><th>Ano</th><th>Período abrangido</th><th>Direito estimado</th><th>Horas realizadas</th><th>Horas em dívida</th></tr></thead>
+          <tbody id="trainingYears"></tbody>
+          <tfoot><tr><th colspan="4">Total de horas em dívida</th><th id="trainingHoursTotal">0,00 h</th></tr></tfoot>
+        </table>
+      </div>
+      <div class="grid cols-2 training-value-row">
+        <label>Período normal de trabalho semanal (h)<input id="weeklyHours" type="number" min="1" max="80" step="0.5" value="40"></label>
+        <label>Complementos regulares considerados (€)<input id="trainingComplements" type="number" min="0" step="0.01" value="0"></label>
+        <label>Valor hora para formação (€)<input id="trainingHourly" type="number" min="0" step="0.01"></label>
+        <div class="readout"><span>Crédito de formação estimado</span><strong id="trainingCreditPreview">€0,00</strong></div>
+      </div>
+
+      <h2>5. IRS</h2>
       <div class="grid cols-2">
         <label>Situação familiar
           <select id="taxStatus">

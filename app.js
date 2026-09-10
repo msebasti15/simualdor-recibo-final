@@ -39,6 +39,167 @@ function irs(amount,status,deps){
   return Math.max(0,round2(amount*rate-deduction-depDed));
 }
 
+
+function formatDatePT(d){
+  return new Intl.DateTimeFormat('pt-PT',{day:'2-digit',month:'2-digit',year:'numeric'}).format(d);
+}
+
+function civilYearOverlap(start,end,year){
+  const ys=new Date(year,0,1,12), ye=new Date(year+1,0,1,12);
+  const a=new Date(Math.max(start.getTime(),ys.getTime()));
+  const endExclusive=new Date(end.getTime()+dayMs);
+  const b=new Date(Math.min(endExclusive.getTime(),ye.getTime()));
+  if(b<=a) return null;
+  return {start:a,end:new Date(b.getTime()-dayMs),days:(b-a)/dayMs,yearDays:(ye-ys)/dayMs};
+}
+
+const trainingState={};
+function trainingYearsForContract(){
+  if(!els.startDate.value||!els.endDate.value) return [];
+  const start=date(els.startDate.value), end=date(els.endDate.value);
+  if(end<start) return [];
+  const years=[];
+  for(let y=start.getFullYear();y<=end.getFullYear();y++){
+    const overlap=civilYearOverlap(start,end,y);
+    if(overlap) years.push({year:y,...overlap});
+  }
+  return years.slice(-5);
+}
+function annualTrainingHours(year){
+  // 35 h até 2019; 40 h desde 2020 (Lei n.º 93/2019).
+  return year >= 2020 ? 40 : 35;
+}
+function estimatedTrainingEntitlement(row){
+  const annual=annualTrainingHours(row.year);
+  const type=els.contractType?.value || 'indefinite';
+  if(type==='indefinite'){
+    // Modo ACT: nos contratos sem termo, o simulador ACT considera o mínimo anual
+    // por cada ano civil apresentado, mesmo quando o ano de cessação é parcial.
+    return annual;
+  }
+  // Art. 131.º/2: contratos a termo >= 3 meses têm mínimo proporcional à duração nesse ano.
+  const contractStart=date(els.startDate.value), contractEnd=date(els.endDate.value);
+  const totalDays=daysBetween(contractStart,new Date(contractEnd.getTime()+dayMs));
+  if(totalDays < 365.2425/4) return 0; // aproximação de 3 meses; abaixo disso não há mínimo legal.
+  return round2(annual*(row.days/row.yearDays));
+}
+function trainingDebtRows(){
+  return trainingYearsForContract().map(row=>{
+    const entitlement=estimatedTrainingEntitlement(row);
+    const completed=Math.max(0,Number(trainingState[row.year]||0));
+    return {...row,entitlement,completed,debt:round2(Math.max(0,entitlement-completed))};
+  });
+}
+function totalTrainingDebt(){
+  const rows=trainingDebtRows();
+  // A formação pode ser antecipada/diferida e é imputada à obrigação mais antiga.
+  // Para o total, interessa o conjunto da janela legal e não limitar artificialmente
+  // a formação ao próprio ano em que foi ministrada.
+  return round2(Math.max(0,rows.reduce((a,r)=>a+r.entitlement,0)-rows.reduce((a,r)=>a+r.completed,0)));
+}
+function renderTrainingYears(){
+  const rows=trainingDebtRows();
+  els.trainingYears.innerHTML=rows.map(row=>`<tr>
+    <td><strong>${row.year}</strong></td>
+    <td>${formatDatePT(row.start)} – ${formatDatePT(row.end)}</td>
+    <td>${row.entitlement.toFixed(2)} h</td>
+    <td><input class="training-completed" data-year="${row.year}" type="number" min="0" step="0.5" value="${row.completed}"></td>
+    <td><strong>${row.debt.toFixed(2)} h</strong></td>
+  </tr>`).join('');
+  document.querySelectorAll('.training-completed').forEach(input=>input.addEventListener('input',()=>{
+    trainingState[input.dataset.year]=Number(input.value||0);
+    recalc(false,false);
+  }));
+  els.trainingHoursTotal.textContent=`${totalTrainingDebt().toFixed(2)} h`;
+}
+function isShortVacationCase(start,end){
+  const startYear=start.getFullYear(), endYear=end.getFullYear();
+  const oneYearLater=new Date(start); oneYearLater.setFullYear(start.getFullYear()+1);
+  return endYear===startYear || endYear===startYear+1 || end<=oneYearLater;
+}
+
+function cessationYearFraction(start,end){
+  const y=end.getFullYear();
+  const ys=new Date(y,0,1,12), ye=new Date(y+1,0,1,12);
+  const effectiveStart=new Date(Math.max(start.getTime(),ys.getTime()));
+  const endExclusive=new Date(end.getTime()+dayMs);
+  return clamp((Math.min(endExclusive.getTime(),ye.getTime())-effectiveStart.getTime())/(ye-ys),0,1);
+}
+
+function contractVacationFraction(start,end){
+  // Used only for the special cap in CT art. 245.º/3. The cap is proportional
+  // to the total duration of the contract, applying the 22-day annual reference.
+  return Math.max(0,daysBetween(start,new Date(end.getTime()+dayMs))/365.2425);
+}
+
+function vacationModel(start,end,monthly){
+  if(!els.startDate.value||!els.endDate.value||end<start) return {special:false,vestedDays:0,propDays:0,vestedValue:0,propValue:0,fraction:0};
+  const annualDays=22;
+  const fraction=cessationYearFraction(start,end);
+  const propDays=annualDays*fraction;
+  const takenYear=Math.max(0,num('vacationTakenYear'));
+  const jan1=new Date(end.getFullYear(),0,1,12);
+  const hasVested=start<jan1;
+  let vestedDays=hasVested?Math.max(0,annualDays-takenYear):0;
+  let propDueDays=propDays;
+  const special=isShortVacationCase(start,end);
+  let capApplied=false;
+  let capDays=null;
+
+  if(special){
+    capDays=annualDays*contractVacationFraction(start,end);
+    const takenContract=end.getFullYear()===start.getFullYear()
+      ? takenYear
+      : Math.max(0,num('vacationTakenContract'));
+    const totalDueDays=Math.max(0,capDays-takenContract);
+    // Under art. 245.º/3 the total vacation entitlement/remuneration is capped.
+    // We aggregate the remaining entitlement in the proportional line to avoid
+    // double counting a vested 22-day block plus the cessation-year proportional.
+    vestedDays=0;
+    propDueDays=totalDueDays;
+    capApplied=true;
+  }
+
+  return {
+    special,capApplied,capDays,fraction,
+    vestedDays:round2(vestedDays),
+    propDays:round2(propDueDays),
+    theoreticalPropDays:round2(propDays),
+    vestedValue:round2(monthly*vestedDays/annualDays),
+    propValue:round2(monthly*propDueDays/annualDays)
+  };
+}
+
+function priorDuodecimosFactor(start,end){
+  // Estimates amounts already processed before the final payroll month.
+  // For a worker already employed at 1 January this is exactly N completed
+  // calendar months / 12. For admission during the year, start counting from
+  // the admission month using the same monthly approximation.
+  const y=end.getFullYear();
+  const firstMonth=Math.max(0,start.getFullYear()===y?start.getMonth():0);
+  const finalMonth=end.getMonth();
+  const completedMonths=Math.max(0,finalMonth-firstMonth);
+  return completedMonths/12;
+}
+
+function updateSubsidyUI(start=null,end=null){
+  const mode=els.subsidyMode.value;
+  const asksLump=mode!=='duodecimos';
+  els.holidayReceivedWrap.hidden=!asksLump;
+  els.christmasReceivedWrap.hidden=!asksLump;
+  if(start&&end&&end>=start) els.specialVacationTakenWrap.hidden=!isShortVacationCase(start,end);
+
+  if(mode==='full'){
+    els.holidayReceivedWrap.firstChild.textContent='Subsídio de férias já recebido por inteiro (€)';
+    els.subsidyHint.textContent='Pagamento por inteiro: indica o que já recebeste de subsídio de férias e, se aplicável, de Natal. O simulador calcula os direitos totais e deduz esses pagamentos.';
+  } else if(mode==='mixed'){
+    els.holidayReceivedWrap.firstChild.textContent='Parcela de subsídio de férias já recebida por inteiro (€)';
+    els.subsidyHint.textContent='Regime 50/50: o simulador estima os 50% em duodécimos já pagos antes do último recibo e permite indicar a parcela paga por inteiro.';
+  } else {
+    els.subsidyHint.textContent='100% em duodécimos: o simulador estima os duodécimos já pagos nos recibos anteriores e apura no fecho a diferença para os direitos legais totais.';
+  }
+}
+
 function calculateLegalComp(){
   const start=date(els.startDate.value), end=date(els.endDate.value);
   if(!els.startDate.value||!els.endDate.value||end<=start) return 0;
@@ -93,24 +254,49 @@ function addLine(lines,name,gross,irsValue,ssBase,meta=''){
   lines.push({name,gross:round2(gross),irs:round2(irsValue),ss,net:round2(gross-irsValue-ss),meta});
 }
 
-function recalc(forceComp=false){
-  const start=date(els.startDate.value), end=date(els.endDate.value);
+function recalc(forceComp=false,renderTraining=true){
+  const validDates=els.startDate.value&&els.endDate.value;
+  const start=validDates?date(els.startDate.value):new Date(), end=validDates?date(els.endDate.value):new Date();
   const base=num('baseSalary'), seniority=num('seniorityPay'), monthly=base+seniority;
   if(forceComp || !els.legalComp.value) els.legalComp.value=calculateLegalComp().toFixed(2);
-  if(!els.trainingHourly.value && monthly>0) els.trainingHourly.value=(monthly*12/(52*40)).toFixed(2);
+  const trainingMonthly=monthly+num('trainingComplements');
+  const weeklyHours=Math.max(1,num('weeklyHours')||40);
+  if(monthly>0) els.trainingHourly.value=(trainingMonthly*12/(52*weeklyHours)).toFixed(2);
+  updateSubsidyUI(start,end);
+  if(renderTraining) renderTrainingYears();
 
   const status=els.taxStatus.value, deps=Math.max(0,Math.floor(num('dependents')));
   if(status==='single0') els.dependents.value=0;
 
   const salaryGross=monthly*clamp(num('salaryDays'),0,30)/30;
-  const vacationGross=monthly*clamp(num('vacationDays'),0,100)/22;
-  const vacationAllowanceGross=vacationGross;
-  const holidayProp=monthly*clamp(num('holidayMonths'),0,12)/12;
-  const christmasProp=monthly*clamp(num('christmasMonths'),0,12)/12;
-  const trainingGross=num('trainingHours')*num('trainingHourly');
+  const vac=vacationModel(start,end,monthly);
+  const vacationVestedGross=vac.vestedValue;
+  const vacationPropGross=vac.propValue;
+
+  // Holiday allowance has the same underlying remaining vacation rights in this
+  // simplified general-regime model. Payment mode changes what was already paid,
+  // not the legal entitlement generated at cessation.
+  const holidayAllowanceEntitlement=vacationVestedGross+vacationPropGross;
+  const christmasEntitlement=round2(monthly*vac.fraction);
+  const mode=els.subsidyMode.value;
+  const priorFactor=priorDuodecimosFactor(start,end);
+  const duoShare=mode==='duodecimos'?1:(mode==='mixed'?.5:0);
+  const holidayDuosPaid=round2(monthly*priorFactor*duoShare);
+  const christmasDuosPaid=round2(monthly*priorFactor*duoShare);
+  const holidayLumpPaid=mode==='duodecimos'?0:Math.max(0,num('holidayReceived'));
+  const christmasLumpPaid=mode==='duodecimos'?0:Math.max(0,num('christmasReceived'));
+  const holidayAllowanceDue=Math.max(0,round2(holidayAllowanceEntitlement-holidayDuosPaid-holidayLumpPaid));
+  const christmasDue=Math.max(0,round2(christmasEntitlement-christmasDuosPaid-christmasLumpPaid));
+
+  els.vestedVacationDaysPreview.textContent=`${vac.vestedDays.toFixed(2)} dias`;
+  els.proportionalVacationDaysPreview.textContent=`${vac.propDays.toFixed(2)} dias`;
+  els.cessationYearFractionPreview.textContent=new Intl.NumberFormat('pt-PT',{style:'percent',minimumFractionDigits:2,maximumFractionDigits:2}).format(vac.fraction);
+
+  const trainingHours=totalTrainingDebt();
+  const trainingGross=trainingHours*num('trainingHourly');
   const legalComp=num('legalComp'), extraComp=num('extraComp'), compensation=legalComp+extraComp;
 
-  const service=els.startDate.value&&els.endDate.value&&end>start?yearsExact(start,new Date(end.getTime()+dayMs)):0;
+  const service=validDates&&end>start?yearsExact(start,new Date(end.getTime()+dayMs)):0;
   let exemptLimit=num('avg12')*service;
   if(els.usedRelief5y.checked||els.newLink24m.checked) exemptLimit=0;
   const taxableComp=Math.max(0,compensation-exemptLimit);
@@ -118,33 +304,39 @@ function recalc(forceComp=false){
 
   const lines=[];
   addLine(lines,'Remuneração mês final',salaryGross,irs(salaryGross,status,deps),salaryGross);
-  addLine(lines,'Férias vencidas / não gozadas',vacationGross,irs(vacationGross,status,deps),vacationGross);
-  addLine(lines,'Subsídio de férias — férias vencidas',vacationAllowanceGross,irs(vacationAllowanceGross,status,deps),vacationAllowanceGross);
-  addLine(lines,'Subsídio de férias proporcional',holidayProp,irs(holidayProp,status,deps),holidayProp);
-  addLine(lines,'Subsídio de Natal proporcional',christmasProp,irs(christmasProp,status,deps),christmasProp);
-  // TCAS 26-09-2024: training amounts due at termination are not included in SS contribution base.
+  if(vacationVestedGross>0) addLine(lines,'Férias vencidas / não gozadas',vacationVestedGross,irs(vacationVestedGross,status,deps),vacationVestedGross,`${vac.vestedDays.toFixed(2)} dias`);
+  addLine(lines,vac.special?'Férias devidas na cessação':'Férias proporcionais — ano da cessação',vacationPropGross,irs(vacationPropGross,status,deps),vacationPropGross,`${vac.propDays.toFixed(2)} dias${vac.capApplied?' · limite art. 245.º/3 aplicado':''}`);
+  addLine(lines,'Subsídio de férias — saldo final',holidayAllowanceDue,irs(holidayAllowanceDue,status,deps),holidayAllowanceDue,`Direito ${eurFmt.format(holidayAllowanceEntitlement)} · já considerado pago ${eurFmt.format(holidayDuosPaid+holidayLumpPaid)}`);
+  addLine(lines,'Subsídio de Natal — saldo final',christmasDue,irs(christmasDue,status,deps),christmasDue,`Direito proporcional ${eurFmt.format(christmasEntitlement)} · já considerado pago ${eurFmt.format(christmasDuosPaid+christmasLumpPaid)}`);
   addLine(lines,'Créditos de formação',trainingGross,irs(trainingGross,status,deps),0,'Sem SS na presente versão');
-  // Legal/extra severance grouped. SS excluded for supported dismissal reasons under CRC art. 48(h).
   addLine(lines,'Compensação legal + adicional',compensation,compIrsOverride??irs(taxableComp,status,deps),0,'IRS apenas sobre parcela tributável estimada');
 
   const totals=lines.reduce((a,l)=>({gross:a.gross+l.gross,irs:a.irs+l.irs,ss:a.ss+l.ss,net:a.net+l.net}),{gross:0,irs:0,ss:0,net:0});
   for(const k in totals) totals[k]=round2(totals[k]);
 
+  els.trainingCreditPreview.textContent=eurFmt.format(trainingGross);
+  els.trainingHoursTotal.textContent=`${trainingHours.toFixed(2)} h`;
   els.lines.innerHTML=lines.map(l=>`<tr><td>${l.name}${l.meta?`<small>${l.meta}</small>`:''}</td><td>${eurFmt.format(l.gross)}</td><td>${eurFmt.format(l.irs)}</td><td>${eurFmt.format(l.ss)}</td><td><strong>${eurFmt.format(l.net)}</strong></td></tr>`).join('');
   els.tGross.textContent=eurFmt.format(totals.gross); els.tIRS.textContent=eurFmt.format(totals.irs); els.tSS.textContent=eurFmt.format(totals.ss); els.tNet.textContent=eurFmt.format(totals.net);
   els.netTotal.textContent=eurFmt.format(totals.net); els.grossSummary.textContent=`Bruto ${eurFmt.format(totals.gross)} · Descontos ${eurFmt.format(totals.irs+totals.ss)}`;
   els.compTotal.textContent=eurFmt.format(compensation); els.compExemptLimit.textContent=eurFmt.format(exemptLimit); els.compTaxable.textContent=eurFmt.format(taxableComp); els.serviceYears.textContent=`${service.toFixed(2)} anos`;
 
   const warnings=[];
-  if(start<date('2013-10-01')) warnings.push('Contrato anterior a 1/10/2013: o regime transitório tem limites e particularidades. Confirma o valor da compensação no simulador da ACT; podes substituir manualmente o resultado.');
-  if(els.usedRelief5y.checked) warnings.push('Assinalaste utilização do regime nos últimos 5 anos: nesta simulação a compensação é tratada como totalmente tributável para IRS.');
+  if(start<date('2013-10-01')) warnings.push('Contrato anterior a 1/10/2013: o regime transitório da compensação tem limites e particularidades. Confirma o valor no simulador da ACT; o campo continua editável.');
+  if(vac.capApplied) warnings.push(`Férias: foi aplicado o limite especial do artigo 245.º, n.º 3. O teto estimado para a duração total do contrato é ${vac.capDays.toFixed(2)} dias; confirma os dias gozados desde a admissão.`);
+  else warnings.push('Férias: foram considerados 22 dias vencidos a 1 de janeiro (quando aplicável), abatendo os dias gozados no ano, mais os proporcionais pelo tempo de serviço no ano da cessação.');
+  if(mode!=='full') warnings.push(`Subsídios: foram estimados ${eurFmt.format(holidayDuosPaid)} de subsídio de férias e ${eurFmt.format(christmasDuosPaid)} de subsídio de Natal já pagos em duodécimos antes do recibo final.`);
+  if(els.usedRelief5y.checked) warnings.push('Assinalaste utilização do regime fiscal nos últimos 5 anos: nesta simulação a compensação é tratada como totalmente tributável para IRS.');
   if(els.newLink24m.checked) warnings.push('Assinalaste novo vínculo com a mesma entidade nos 24 meses seguintes: nesta simulação a compensação é tratada como totalmente tributável para IRS.');
-  warnings.push('A retenção de IRS da parcela tributável da compensação é uma estimativa de recibo. O imposto final depende da liquidação anual e do processamento concreto da entidade pagadora.');
-  warnings.push('Férias e proporcionais podem variar com datas, férias já gozadas, regras internas/CCT e outras parcelas remuneratórias. Os campos são editáveis para reconciliação com o recibo real.');
+  if(els.contractType.value==='indefinite') warnings.push('Formação: em modo ACT, o contrato sem termo considera 40 h por cada ano civil da janela, incluindo anos parciais.');
+  else warnings.push('Formação: nos contratos a termo com duração igual ou superior a 3 meses, o artigo 131.º, n.º 2 prevê proporcionalidade no ano.');
+  warnings.push('A retenção de IRS apresentada é uma estimativa do recibo; a liquidação anual de IRS pode produzir um resultado diferente.');
   els.warnings.innerHTML=warnings.map((w,i)=>`<div class="warning ${i>1?'info':''}">${w}</div>`).join('');
 }
 
-document.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',()=>recalc(false)));
+document.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',()=>recalc(false,true)));
+els.startDate.addEventListener('change',()=>recalc(false,true));
+els.endDate.addEventListener('change',()=>recalc(false,true));
 els.useAutoComp.addEventListener('click',()=>recalc(true));
 els.printBtn.addEventListener('click',()=>window.print());
 recalc(true);
