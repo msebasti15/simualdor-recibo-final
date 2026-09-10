@@ -48,6 +48,18 @@
       <h2>2. Férias e subsídios</h2>
       <div class="grid cols-2">
         <label>Dias remunerados no mês final<input id="salaryDays" type="number" min="0" max="30" step="1" value="30"></label>
+        <label>Subsídio de alimentação devido no último mês (€)
+          <input id="mealAllowance" type="number" min="0" step="0.01" value="0">
+          <small>Introduz o total a pagar no recibo final.</small>
+        </label>
+        <label>Parcela do subsídio de alimentação sujeita a IRS/SS (€)
+          <input id="mealAllowanceTaxable" type="number" min="0" step="0.01" value="0">
+          <small>Apenas a parte que exceda a isenção aplicável ao teu modo de pagamento.</small>
+        </label>
+        <label>Outros valores do último salário — apenas IRS (€)
+          <input id="otherIrsOnly" type="number" min="0" step="0.01" value="0">
+          <small>Ex.: subsídio de remote work, transporte ou outra verba que no teu recibo esteja sujeita a IRS mas não a Segurança Social.</small>
+        </label>
         <label>Férias já gozadas (dias úteis)<input id="vacationTakenYear" type="number" min="0" max="30" step="0.5" value="0"></label>
         <label>Regime de pagamento dos subsídios
           <select id="subsidyMode">
@@ -123,6 +135,35 @@
           <strong id="netTotal">€0,00</strong>
           <small id="grossSummary">Bruto €0,00 · Descontos €0,00</small>
         </div>
+
+        <label class="result-toggle check"><input id="showNetBreakdown" type="checkbox" checked> Separar o valor líquido por componente</label>
+
+        <section id="netBreakdown" class="net-breakdown">
+          <div class="comparison-grid">
+            <div class="comparison-card primary-comparison">
+              <span>Com indemnização extra</span>
+              <strong id="netWithExtra">€0,00</strong>
+              <small>Líquido final estimado</small>
+            </div>
+            <div class="comparison-card">
+              <span>Sem indemnização extra</span>
+              <strong id="netWithoutExtra">€0,00</strong>
+              <small>Líquido estimado sem o valor adicional</small>
+            </div>
+            <div class="comparison-card difference-card">
+              <span>Diferença líquida do extra</span>
+              <strong id="netExtraDifference">€0,00</strong>
+              <small id="extraGrossHint">Extra bruto €0,00</small>
+            </div>
+          </div>
+
+          <div class="net-components">
+            <div><span>Salário + férias e subsídios</span><strong id="netSalaryRights">€0,00</strong></div>
+            <div><span>Créditos de formação</span><strong id="netTraining">€0,00</strong></div>
+            <div><span>Indemnização legal</span><strong id="netLegalComp">€0,00</strong></div>
+            <div><span>Indemnização extra</span><strong id="netExtraComp">€0,00</strong></div>
+          </div>
+        </section>
 
         <div class="metrics">
           <div><span>Montante global comparável à ACT</span><strong id="actGrossTotal">€0,00</strong></div>
