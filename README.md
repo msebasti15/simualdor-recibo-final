@@ -78,3 +78,13 @@ A incidência contributiva continua a ser apurada por rubrica:
 - compensações de cessação nos motivos atualmente suportados pelo simulador: sem incidência;
 - subsídio de alimentação: apenas a parcela indicada como sujeita;
 - outros valores: conforme classificação manual apresentada na interface.
+
+
+## v9.2 — taxas de IRS para validação manual
+
+O detalhe de cada rubrica apresenta agora:
+- taxa marginal da linha da tabela de retenção de 2026 utilizada;
+- taxa efetiva de retenção (`IRS / base tributável`);
+- base tributável relevante.
+
+Nas rubricas pertencentes ao grupo normal, a taxa apresentada é a do grupo agregado — não uma taxa artificial calculada isoladamente para a rubrica. Nos subsídios de férias e Natal é mostrada a taxa da respetiva retenção autónoma. O resumo também mostra as taxas do cenário com e sem indemnização extra.

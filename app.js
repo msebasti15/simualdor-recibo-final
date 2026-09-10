@@ -314,6 +314,35 @@ function proportionalAutonomousIrs(entitlement,due,status,deps){
   return round2(irs(entitlement,status,deps)*(due/entitlement));
 }
 
+
+function irsRateInfo(amount,status,deps){
+  amount=Math.max(0,Number(amount)||0);
+  const tax=round2(irs(amount,status,deps));
+  const effective=amount>0 ? (tax/amount)*100 : 0;
+
+  // Marginal withholding rate from the same 2026 table row used by irs().
+  // This is shown for audit/validation; effective rate is tax/base.
+  const tables={
+    single:[
+      [920,0],[1042,12.5],[1108,15.7],[1154,15.7],[1212,21.2],[1819,24.1],
+      [2119,31.1],[2499,34.9],[3305,38.36],[5547,39.69],[20221,44.95],[Infinity,47.17]
+    ],
+    sole:[
+      [991,0],[1042,12.5],[1108,12.5],[1119,12.5],[1432,12.72],[1962,15.7],
+      [2240,19.38],[2773,22.77],[3389,25.70],[5965,28.81],[20265,38.43],[Infinity,47.17]
+    ]
+  };
+  const rows=status==='married_sole'?tables.sole:tables.single;
+  let marginal=(rows.find(r=>amount<=r[0])||rows[rows.length-1])[1];
+  if(status!=='married_sole' && deps>=3 && marginal>0) marginal=Math.max(0,marginal-1);
+  return {tax,effective,marginal};
+}
+
+function rateMeta(label,base,tax,status,deps){
+  const info=irsRateInfo(base,status,deps);
+  return `${label}: base ${eurFmt.format(base)} · taxa marginal ${info.marginal.toFixed(2)}% · taxa efetiva ${(base>0?(tax/base*100):0).toFixed(2)}%`;
+}
+
 function allocateTax(totalTax, items){
   const totalBase=round2(items.reduce((s,i)=>s+Math.max(0,i.taxBase||0),0));
   const out={};
@@ -459,6 +488,8 @@ function recalc(forceComp=false,renderTraining=true){
   const normalIrsWithExtra=round2(normalIrsOverride??irs(normalTaxBaseWithExtra,status,deps));
   const normalIrsWithoutExtra=round2(irs(normalTaxBaseWithoutExtra,status,deps));
   const normalAlloc=allocateTax(normalIrsWithExtra,normalItemsWithExtra);
+  const normalRateInfo=irsRateInfo(normalTaxBaseWithExtra,status,deps);
+  const normalRateInfoWithoutExtra=irsRateInfo(normalTaxBaseWithoutExtra,status,deps);
 
   // Retenção autónoma dos subsídios. Quando apenas uma parte é paga no fecho,
   // aplica-se a proporção do imposto correspondente ao direito de referência.
@@ -480,50 +511,50 @@ function recalc(forceComp=false,renderTraining=true){
 
   const lines=[];
   addLine(lines,'Remuneração mês final',salaryGross,normalAlloc.salary,salaryGross,
-    `Grupo normal IRS · base atribuída ${eurFmt.format(salaryGross)}`,'salary');
+    `Grupo normal IRS · taxa marginal ${normalRateInfo.marginal.toFixed(2)}% · taxa efetiva do grupo ${(normalTaxBaseWithExtra>0?normalIrsWithExtra/normalTaxBaseWithExtra*100:0).toFixed(2)}% · base atribuída ${eurFmt.format(salaryGross)}`,'salary');
 
   if(mealAllowance>0)
     addLine(lines,'Subsídio de alimentação',mealAllowance,normalAlloc.meal,mealAllowanceTaxable,
-      `Grupo normal IRS apenas sobre ${eurFmt.format(mealAllowanceTaxable)} · parcela isenta ${eurFmt.format(mealAllowance-mealAllowanceTaxable)}`,'salary');
+      `Grupo normal IRS · taxa marginal ${normalRateInfo.marginal.toFixed(2)}% · taxa efetiva do grupo ${(normalTaxBaseWithExtra>0?normalIrsWithExtra/normalTaxBaseWithExtra*100:0).toFixed(2)}% · base tributável ${eurFmt.format(mealAllowanceTaxable)} · parcela isenta ${eurFmt.format(mealAllowance-mealAllowanceTaxable)}`,'salary');
 
   if(otherIrsOnly>0)
     addLine(lines,'Outros valores — apenas IRS',otherIrsOnly,normalAlloc.other,0,
-      'Grupo normal IRS · sem incidência de SS conforme classificação manual','salary');
+      `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · sem incidência de SS conforme classificação manual`,'salary');
 
   if(vacationVestedGross>0)
     addLine(lines,'Férias vencidas / não gozadas',vacationVestedGross,normalAlloc.vacVested,vacationVestedGross,
-      `${vac.vestedDays.toFixed(2)} dias · grupo normal IRS`,'salary');
+      `${vac.vestedDays.toFixed(2)} dias · ${rateMeta('grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)}`,'salary');
 
   if(vacationPropGross>0)
     addLine(lines,vac.special?'Férias devidas na cessação':'Férias proporcionais — ano da cessação',
       vacationPropGross,normalAlloc.vacProp,vacationPropGross,
-      `${vac.propDays.toFixed(2)} dias${vac.capApplied?' · limite art. 245.º/3 aplicado':''} · grupo normal IRS`,'salary');
+      `${vac.propDays.toFixed(2)} dias${vac.capApplied?' · limite art. 245.º/3 aplicado':''} · ${rateMeta('grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)}`,'salary');
 
   if(vestedHolidayAllowanceEntitlement>0 || vestedHolidayAllowanceDue>0)
     addLine(lines,'Subsídio de férias vencido — saldo',
       vestedHolidayAllowanceDue,vestedHolidayIrs,vestedHolidayAllowanceDue,
-      `Retenção autónoma · direito ${eurFmt.format(vestedHolidayAllowanceEntitlement)} · saldo pago ${eurFmt.format(vestedHolidayAllowanceDue)}`,'salary');
+      `${rateMeta('Retenção autónoma',vestedHolidayAllowanceEntitlement,irs(vestedHolidayAllowanceEntitlement,status,deps),status,deps)} · saldo pago ${eurFmt.format(vestedHolidayAllowanceDue)}`,'salary');
 
   if(proportionalHolidayAllowanceDue>0)
     addLine(lines,'Subsídio de férias proporcional',
       proportionalHolidayAllowanceDue,proportionalHolidayIrs,proportionalHolidayAllowanceDue,
-      `Retenção autónoma · direito de referência ${eurFmt.format(proportionalHolidayAllowanceEntitlement)}`,'salary');
+      `${rateMeta('Retenção autónoma',proportionalHolidayAllowanceEntitlement,irs(proportionalHolidayAllowanceEntitlement,status,deps),status,deps)} · saldo pago ${eurFmt.format(proportionalHolidayAllowanceDue)}`,'salary');
 
   if(christmasDue>0)
     addLine(lines,'Subsídio de Natal proporcional — saldo',
       christmasDue,christmasIrs,christmasDue,
-      `Retenção autónoma · direito proporcional ${eurFmt.format(christmasEntitlement)}`,'salary');
+      `${rateMeta('Retenção autónoma',christmasEntitlement,irs(christmasEntitlement,status,deps),status,deps)} · saldo pago ${eurFmt.format(christmasDue)}`,'salary');
 
   if(trainingGross>0)
     addLine(lines,'Créditos de formação',trainingGross,normalAlloc.training,0,
-      'Categoria A no grupo normal IRS · sem SS segundo jurisprudência TCAS de 26-09-2024','training');
+      `${rateMeta('Categoria A · grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · sem SS segundo jurisprudência TCAS de 26-09-2024`,'training');
 
   addLine(lines,'Indemnização legal',legalComp,normalAlloc.legalComp,0,
-    `Parcela sujeita a IRS ${eurFmt.format(taxableLegalComp)} · restante dentro do limite fiscal estimado`,'legalComp');
+    `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · parcela desta rubrica sujeita ${eurFmt.format(taxableLegalComp)} · restante dentro do limite fiscal estimado`,'legalComp');
 
   if(extraComp>0)
     addLine(lines,'Indemnização extra',extraComp,normalAlloc.extraComp,0,
-      `Parcela incremental sujeita a IRS ${eurFmt.format(taxableExtraComp)} · integrada no grupo normal`,'extraComp');
+      `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · parcela incremental sujeita ${eurFmt.format(taxableExtraComp)}`,'extraComp');
 
   const totals=lines.reduce((a,l)=>({gross:a.gross+l.gross,irs:a.irs+l.irs,ss:a.ss+l.ss,net:a.net+l.net}),{gross:0,irs:0,ss:0,net:0});
   for(const k in totals) totals[k]=round2(totals[k]);
@@ -562,7 +593,7 @@ function recalc(forceComp=false,renderTraining=true){
   if(els.netBreakdown && els.showNetBreakdown) els.netBreakdown.hidden=!els.showNetBreakdown.checked;
 
   const warnings=[];
-  warnings.push(`IRS: base normal agregada ${eurFmt.format(normalTaxBaseWithExtra)} → retenção estimada ${eurFmt.format(normalIrsWithExtra)}. Subsídios de férias e Natal são calculados autonomamente.`);
+  warnings.push(`IRS grupo normal: base ${eurFmt.format(normalTaxBaseWithExtra)} · taxa marginal ${normalRateInfo.marginal.toFixed(2)}% · taxa efetiva ${(normalTaxBaseWithExtra>0?normalIrsWithExtra/normalTaxBaseWithExtra*100:0).toFixed(2)}% · retenção ${eurFmt.format(normalIrsWithExtra)}. Cenário sem extra: base ${eurFmt.format(normalTaxBaseWithoutExtra)} · marginal ${normalRateInfoWithoutExtra.marginal.toFixed(2)}% · efetiva ${(normalTaxBaseWithoutExtra>0?normalIrsWithoutExtra/normalTaxBaseWithoutExtra*100:0).toFixed(2)}%. Subsídios de férias e Natal têm retenção autónoma.`);
   if(otherIrsOnly>0) warnings.push('Outros valores do último salário: a aplicação assume, conforme indicado no campo, incidência em IRS e ausência de incidência em Segurança Social. Confirma a classificação da verba no recibo/contrato, porque a incidência depende da natureza concreta do pagamento.');
   if(mealAllowance>0 && mealAllowanceTaxable===0) warnings.push('Subsídio de alimentação: foi considerada isenta a totalidade do valor introduzido. Se existir uma parcela acima do limite de isenção aplicável, indica-a no campo “Parcela sujeita a IRS/SS”.');
   if(start<date('2013-10-01')) warnings.push('Contrato anterior a 1/10/2013: o regime transitório da compensação tem limites e particularidades. Confirma o valor no simulador da ACT; o campo continua editável.');
