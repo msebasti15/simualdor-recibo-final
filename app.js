@@ -1,4 +1,4 @@
-const € = new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'});
+const eurFmt = new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'});
 const els = Object.fromEntries([...document.querySelectorAll('[id]')].map(x=>[x.id,x]));
 const num=id=>Number(els[id].value||0);
 const dayMs=86400000;
@@ -130,10 +130,10 @@ function recalc(forceComp=false){
   const totals=lines.reduce((a,l)=>({gross:a.gross+l.gross,irs:a.irs+l.irs,ss:a.ss+l.ss,net:a.net+l.net}),{gross:0,irs:0,ss:0,net:0});
   for(const k in totals) totals[k]=round2(totals[k]);
 
-  els.lines.innerHTML=lines.map(l=>`<tr><td>${l.name}${l.meta?`<small>${l.meta}</small>`:''}</td><td>${€ .format(l.gross)}</td><td>${€ .format(l.irs)}</td><td>${€ .format(l.ss)}</td><td><strong>${€ .format(l.net)}</strong></td></tr>`).join('');
-  els.tGross.textContent=€.format(totals.gross); els.tIRS.textContent=€.format(totals.irs); els.tSS.textContent=€.format(totals.ss); els.tNet.textContent=€.format(totals.net);
-  els.netTotal.textContent=€.format(totals.net); els.grossSummary.textContent=`Bruto ${€.format(totals.gross)} · Descontos ${€.format(totals.irs+totals.ss)}`;
-  els.compTotal.textContent=€.format(compensation); els.compExemptLimit.textContent=€.format(exemptLimit); els.compTaxable.textContent=€.format(taxableComp); els.serviceYears.textContent=`${service.toFixed(2)} anos`;
+  els.lines.innerHTML=lines.map(l=>`<tr><td>${l.name}${l.meta?`<small>${l.meta}</small>`:''}</td><td>${eurFmt.format(l.gross)}</td><td>${eurFmt.format(l.irs)}</td><td>${eurFmt.format(l.ss)}</td><td><strong>${eurFmt.format(l.net)}</strong></td></tr>`).join('');
+  els.tGross.textContent=eurFmt.format(totals.gross); els.tIRS.textContent=eurFmt.format(totals.irs); els.tSS.textContent=eurFmt.format(totals.ss); els.tNet.textContent=eurFmt.format(totals.net);
+  els.netTotal.textContent=eurFmt.format(totals.net); els.grossSummary.textContent=`Bruto ${eurFmt.format(totals.gross)} · Descontos ${eurFmt.format(totals.irs+totals.ss)}`;
+  els.compTotal.textContent=eurFmt.format(compensation); els.compExemptLimit.textContent=eurFmt.format(exemptLimit); els.compTaxable.textContent=eurFmt.format(taxableComp); els.serviceYears.textContent=`${service.toFixed(2)} anos`;
 
   const warnings=[];
   if(start<date('2013-10-01')) warnings.push('Contrato anterior a 1/10/2013: o regime transitório tem limites e particularidades. Confirma o valor da compensação no simulador da ACT; podes substituir manualmente o resultado.');
