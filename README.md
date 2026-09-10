@@ -57,3 +57,16 @@ Esta é uma ferramenta de simulação e reconciliação, não um parecer jurídi
 - Três regimes de subsídios: 100% integral, 50% duodécimos + 50% integral, e 100% duodécimos.
 - Os duodécimos são tratados como pagamentos já efetuados e abatidos aos direitos totais no fecho.
 - Subsídio de Natal proporcional calculado diretamente pelo tempo de serviço no ano da cessação.
+
+## v5 — compatibilidade ACT (sem duodécimos)
+
+No modo "subsídios pagos por inteiro", os proporcionais de férias, subsídio de férias e subsídio de Natal usam a convenção observada no simulador ACT: duração civil em meses + dias, com a fórmula `meses/12 + dias/365`.
+
+Caso de regressão usado:
+- contrato a termo certo: 01/09/2022 a 24/12/2024
+- remuneração base: 1 650 €
+- férias gozadas: 14 dias
+- subsídio de férias já recebido: 1 650 €
+- resultado ACT: férias em falta 600,00 €; proporcionais 1 620,99 € (cada); total 5 462,98 €.
+
+O valor/hora da formação é calculado automaticamente por `remuneração mensal bruta × 12 / (52 × período normal de trabalho semanal)`.

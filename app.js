@@ -118,12 +118,35 @@ function isShortVacationCase(start,end){
   return endYear===startYear || endYear===startYear+1 || end<=oneYearLater;
 }
 
+function addCalendarMonths(d, months){
+  const out=new Date(d);
+  const originalDay=out.getDate();
+  out.setDate(1);
+  out.setMonth(out.getMonth()+months);
+  const lastDay=new Date(out.getFullYear(),out.getMonth()+1,0,12).getDate();
+  out.setDate(Math.min(originalDay,lastDay));
+  return out;
+}
+
+// Compatibilidade com o simulador ACT: os proporcionais são calculados por
+// proporcionalidade direta do tempo trabalhado, convertendo a duração civil
+// em meses + dias. Ex.: 01/01 a 24/12 => 11 meses + 24 dias => 11/12 + 24/365.
+function actDirectFraction(periodStart,end){
+  const endExclusive=new Date(end.getTime()+dayMs);
+  if(endExclusive<=periodStart) return 0;
+  let months=(endExclusive.getFullYear()-periodStart.getFullYear())*12 + (endExclusive.getMonth()-periodStart.getMonth());
+  let cursor=addCalendarMonths(periodStart,months);
+  while(cursor>endExclusive && months>0){ months--; cursor=addCalendarMonths(periodStart,months); }
+  while(addCalendarMonths(periodStart,months+1)<=endExclusive){ months++; cursor=addCalendarMonths(periodStart,months); }
+  const remDays=Math.max(0,Math.round(daysBetween(cursor,endExclusive)));
+  return Math.max(0,months/12 + remDays/365);
+}
+
 function cessationYearFraction(start,end){
   const y=end.getFullYear();
-  const ys=new Date(y,0,1,12), ye=new Date(y+1,0,1,12);
+  const ys=new Date(y,0,1,12);
   const effectiveStart=new Date(Math.max(start.getTime(),ys.getTime()));
-  const endExclusive=new Date(end.getTime()+dayMs);
-  return clamp((Math.min(endExclusive.getTime(),ye.getTime())-effectiveStart.getTime())/(ye-ys),0,1);
+  return clamp(actDirectFraction(effectiveStart,end),0,1);
 }
 
 function contractVacationFraction(start,end){
@@ -190,10 +213,10 @@ function updateSubsidyUI(start=null,end=null){
   if(start&&end&&end>=start) els.specialVacationTakenWrap.hidden=!isShortVacationCase(start,end);
 
   if(mode==='full'){
-    els.holidayReceivedWrap.firstChild.textContent='Subsídio de férias já recebido por inteiro (€)';
+    els.holidayReceivedLabel.textContent='Subsídio de férias já recebido por inteiro (€)';
     els.subsidyHint.textContent='Pagamento por inteiro: indica o que já recebeste de subsídio de férias e, se aplicável, de Natal. O simulador calcula os direitos totais e deduz esses pagamentos.';
   } else if(mode==='mixed'){
-    els.holidayReceivedWrap.firstChild.textContent='Parcela de subsídio de férias já recebida por inteiro (€)';
+    els.holidayReceivedLabel.textContent='Parcela de subsídio de férias já recebida por inteiro (€)';
     els.subsidyHint.textContent='Regime 50/50: o simulador estima os 50% em duodécimos já pagos antes do último recibo e permite indicar a parcela paga por inteiro.';
   } else {
     els.subsidyHint.textContent='100% em duodécimos: o simulador estima os duodécimos já pagos nos recibos anteriores e apura no fecho a diferença para os direitos legais totais.';
@@ -259,9 +282,9 @@ function recalc(forceComp=false,renderTraining=true){
   const start=validDates?date(els.startDate.value):new Date(), end=validDates?date(els.endDate.value):new Date();
   const base=num('baseSalary'), seniority=num('seniorityPay'), monthly=base+seniority;
   if(forceComp || !els.legalComp.value) els.legalComp.value=calculateLegalComp().toFixed(2);
-  const trainingMonthly=monthly+num('trainingComplements');
   const weeklyHours=Math.max(1,num('weeklyHours')||40);
-  if(monthly>0) els.trainingHourly.value=(trainingMonthly*12/(52*weeklyHours)).toFixed(2);
+  const trainingHourly=monthly>0 ? round2(monthly*12/(52*weeklyHours)) : 0;
+  els.trainingHourly.value=trainingHourly.toFixed(2);
   updateSubsidyUI(start,end);
   if(renderTraining) renderTrainingYears();
 
@@ -273,27 +296,49 @@ function recalc(forceComp=false,renderTraining=true){
   const vacationVestedGross=vac.vestedValue;
   const vacationPropGross=vac.propValue;
 
-  // Holiday allowance has the same underlying remaining vacation rights in this
-  // simplified general-regime model. Payment mode changes what was already paid,
-  // not the legal entitlement generated at cessation.
-  const holidayAllowanceEntitlement=vacationVestedGross+vacationPropGross;
+  // A ACT separa o subsídio de férias vencido do proporcional do ano da cessação.
+  // No regime sem duodécimos, o valor já recebido abate apenas ao subsídio vencido,
+  // não ao proporcional gerado no ano da cessação.
+  const hasVestedAnnualHoliday = !vac.special && start < new Date(end.getFullYear(),0,1,12);
+  const vestedHolidayAllowanceEntitlement = hasVestedAnnualHoliday ? monthly : 0;
+  const proportionalHolidayAllowanceEntitlement = vacationPropGross;
   const christmasEntitlement=round2(monthly*vac.fraction);
   const mode=els.subsidyMode.value;
   const priorFactor=priorDuodecimosFactor(start,end);
-  const duoShare=mode==='duodecimos'?1:(mode==='mixed'?.5:0);
+  let duoShare = 0;
+  if (mode === 'duodecimos') duoShare = 1;
+  else if (mode === 'mixed') duoShare = 0.5;
   const holidayDuosPaid=round2(monthly*priorFactor*duoShare);
   const christmasDuosPaid=round2(monthly*priorFactor*duoShare);
   const holidayLumpPaid=mode==='duodecimos'?0:Math.max(0,num('holidayReceived'));
   const christmasLumpPaid=mode==='duodecimos'?0:Math.max(0,num('christmasReceived'));
-  const holidayAllowanceDue=Math.max(0,round2(holidayAllowanceEntitlement-holidayDuosPaid-holidayLumpPaid));
-  const christmasDue=Math.max(0,round2(christmasEntitlement-christmasDuosPaid-christmasLumpPaid));
+
+  let vestedHolidayAllowanceDue=0;
+  let proportionalHolidayAllowanceDue=proportionalHolidayAllowanceEntitlement;
+  let christmasDue=0;
+  if(mode==='full'){
+    vestedHolidayAllowanceDue=Math.max(0,round2(vestedHolidayAllowanceEntitlement-holidayLumpPaid));
+    // Tal como na ACT, o subsídio já recebido não é abatido ao proporcional do ano.
+    christmasDue=Math.max(0,round2(christmasEntitlement-christmasLumpPaid));
+  } else {
+    // Nos regimes com duodécimos, os pagamentos prévios são abatidos ao direito
+    // total acumulado, começando pela componente vencida e depois pela proporcional.
+    const holidayTotal=round2(vestedHolidayAllowanceEntitlement+proportionalHolidayAllowanceEntitlement);
+    const holidayPaid=round2(holidayDuosPaid+holidayLumpPaid);
+    const holidayDue=Math.max(0,round2(holidayTotal-holidayPaid));
+    vestedHolidayAllowanceDue=Math.min(vestedHolidayAllowanceEntitlement,holidayDue);
+    proportionalHolidayAllowanceDue=Math.max(0,round2(holidayDue-vestedHolidayAllowanceDue));
+    christmasDue=Math.max(0,round2(christmasEntitlement-christmasDuosPaid-christmasLumpPaid));
+  }
+  const holidayAllowanceDue=round2(vestedHolidayAllowanceDue+proportionalHolidayAllowanceDue);
+  const holidayAllowanceEntitlement=round2(vestedHolidayAllowanceEntitlement+proportionalHolidayAllowanceEntitlement);
 
   els.vestedVacationDaysPreview.textContent=`${vac.vestedDays.toFixed(2)} dias`;
   els.proportionalVacationDaysPreview.textContent=`${vac.propDays.toFixed(2)} dias`;
   els.cessationYearFractionPreview.textContent=new Intl.NumberFormat('pt-PT',{style:'percent',minimumFractionDigits:2,maximumFractionDigits:2}).format(vac.fraction);
 
   const trainingHours=totalTrainingDebt();
-  const trainingGross=trainingHours*num('trainingHourly');
+  const trainingGross=round2(trainingHours*trainingHourly);
   const legalComp=num('legalComp'), extraComp=num('extraComp'), compensation=legalComp+extraComp;
 
   const service=validDates&&end>start?yearsExact(start,new Date(end.getTime()+dayMs)):0;
@@ -306,8 +351,10 @@ function recalc(forceComp=false,renderTraining=true){
   addLine(lines,'Remuneração mês final',salaryGross,irs(salaryGross,status,deps),salaryGross);
   if(vacationVestedGross>0) addLine(lines,'Férias vencidas / não gozadas',vacationVestedGross,irs(vacationVestedGross,status,deps),vacationVestedGross,`${vac.vestedDays.toFixed(2)} dias`);
   addLine(lines,vac.special?'Férias devidas na cessação':'Férias proporcionais — ano da cessação',vacationPropGross,irs(vacationPropGross,status,deps),vacationPropGross,`${vac.propDays.toFixed(2)} dias${vac.capApplied?' · limite art. 245.º/3 aplicado':''}`);
-  addLine(lines,'Subsídio de férias — saldo final',holidayAllowanceDue,irs(holidayAllowanceDue,status,deps),holidayAllowanceDue,`Direito ${eurFmt.format(holidayAllowanceEntitlement)} · já considerado pago ${eurFmt.format(holidayDuosPaid+holidayLumpPaid)}`);
-  addLine(lines,'Subsídio de Natal — saldo final',christmasDue,irs(christmasDue,status,deps),christmasDue,`Direito proporcional ${eurFmt.format(christmasEntitlement)} · já considerado pago ${eurFmt.format(christmasDuosPaid+christmasLumpPaid)}`);
+  if(vestedHolidayAllowanceEntitlement>0 || vestedHolidayAllowanceDue>0)
+    addLine(lines,'Subsídio de férias vencido — saldo',vestedHolidayAllowanceDue,irs(vestedHolidayAllowanceDue,status,deps),vestedHolidayAllowanceDue,`Direito ${eurFmt.format(vestedHolidayAllowanceEntitlement)} · já recebido ${eurFmt.format(mode==='full'?holidayLumpPaid:Math.min(vestedHolidayAllowanceEntitlement,holidayDuosPaid+holidayLumpPaid))}`);
+  addLine(lines,'Subsídio de férias proporcional',proportionalHolidayAllowanceDue,irs(proportionalHolidayAllowanceDue,status,deps),proportionalHolidayAllowanceDue,`Proporcional ACT ${eurFmt.format(proportionalHolidayAllowanceEntitlement)}`);
+  addLine(lines,'Subsídio de Natal proporcional — saldo',christmasDue,irs(christmasDue,status,deps),christmasDue,`Direito proporcional ${eurFmt.format(christmasEntitlement)} · já considerado pago ${eurFmt.format((mode==='full'?0:christmasDuosPaid)+christmasLumpPaid)}`);
   addLine(lines,'Créditos de formação',trainingGross,irs(trainingGross,status,deps),0,'Sem SS na presente versão');
   addLine(lines,'Compensação legal + adicional',compensation,compIrsOverride??irs(taxableComp,status,deps),0,'IRS apenas sobre parcela tributável estimada');
 
@@ -324,7 +371,7 @@ function recalc(forceComp=false,renderTraining=true){
   const warnings=[];
   if(start<date('2013-10-01')) warnings.push('Contrato anterior a 1/10/2013: o regime transitório da compensação tem limites e particularidades. Confirma o valor no simulador da ACT; o campo continua editável.');
   if(vac.capApplied) warnings.push(`Férias: foi aplicado o limite especial do artigo 245.º, n.º 3. O teto estimado para a duração total do contrato é ${vac.capDays.toFixed(2)} dias; confirma os dias gozados desde a admissão.`);
-  else warnings.push('Férias: foram considerados 22 dias vencidos a 1 de janeiro (quando aplicável), abatendo os dias gozados no ano, mais os proporcionais pelo tempo de serviço no ano da cessação.');
+  else warnings.push('Férias: foram considerados 22 dias vencidos a 1 de janeiro (quando aplicável), abatendo os dias gozados, e os proporcionais segundo a proporcionalidade direta usada pela ACT (meses/12 + dias/365).');
   if(mode!=='full') warnings.push(`Subsídios: foram estimados ${eurFmt.format(holidayDuosPaid)} de subsídio de férias e ${eurFmt.format(christmasDuosPaid)} de subsídio de Natal já pagos em duodécimos antes do recibo final.`);
   if(els.usedRelief5y.checked) warnings.push('Assinalaste utilização do regime fiscal nos últimos 5 anos: nesta simulação a compensação é tratada como totalmente tributável para IRS.');
   if(els.newLink24m.checked) warnings.push('Assinalaste novo vínculo com a mesma entidade nos 24 meses seguintes: nesta simulação a compensação é tratada como totalmente tributável para IRS.');
@@ -334,9 +381,23 @@ function recalc(forceComp=false,renderTraining=true){
   els.warnings.innerHTML=warnings.map((w,i)=>`<div class="warning ${i>1?'info':''}">${w}</div>`).join('');
 }
 
-document.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',()=>recalc(false,true)));
-els.startDate.addEventListener('change',()=>recalc(false,true));
-els.endDate.addEventListener('change',()=>recalc(false,true));
-els.useAutoComp.addEventListener('click',()=>recalc(true));
-els.printBtn.addEventListener('click',()=>window.print());
-recalc(true);
+function initApp(){
+  try {
+    document.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',()=>recalc(false,true)));
+    els.startDate.addEventListener('change',()=>recalc(false,true));
+    els.endDate.addEventListener('change',()=>recalc(false,true));
+    els.useAutoComp.addEventListener('click',()=>recalc(true));
+    els.printBtn.addEventListener('click',()=>window.print());
+    recalc(true);
+  } catch (error) {
+    console.error('Erro ao iniciar o simulador:', error);
+    const errorBox = document.getElementById('appError');
+    if (errorBox) {
+      errorBox.hidden = false;
+      errorBox.textContent = 'O simulador encontrou um erro ao iniciar: ' + (error?.message || error);
+    }
+  }
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initApp);
+else initApp();

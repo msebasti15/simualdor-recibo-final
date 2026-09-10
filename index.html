@@ -56,8 +56,8 @@
             <option value="duodecimos">100% em duodécimos</option>
           </select>
         </label>
-        <label id="holidayReceivedWrap">Subsídio de férias já recebido por inteiro (€)<input id="holidayReceived" type="number" min="0" step="0.01" value="0"></label>
-        <label id="christmasReceivedWrap">Subsídio de Natal já recebido / adiantado (€)<input id="christmasReceived" type="number" min="0" step="0.01" value="0"></label>
+        <label id="holidayReceivedWrap"><span id="holidayReceivedLabel">Subsídio de férias já recebido por inteiro (€)</span><input id="holidayReceived" type="number" min="0" step="0.01" value="0"></label>
+        <label id="christmasReceivedWrap"><span>Subsídio de Natal já recebido / adiantado (€)</span><input id="christmasReceived" type="number" min="0" step="0.01" value="0"></label>
         <label id="specialVacationTakenWrap" hidden>Dias de férias já gozados desde a admissão<input id="vacationTakenContract" type="number" min="0" max="60" step="0.5" value="0"><small>Usado apenas quando se aplica o limite do artigo 245.º, n.º 3.</small></label>
       </div>
       <p id="subsidyHint" class="hint"></p>
@@ -87,8 +87,7 @@
       </div>
       <div class="grid cols-2 training-value-row">
         <label>Período normal de trabalho semanal (h)<input id="weeklyHours" type="number" min="1" max="80" step="0.5" value="40"></label>
-        <label>Complementos regulares considerados (€)<input id="trainingComplements" type="number" min="0" step="0.01" value="0"></label>
-        <label>Valor hora para formação (€)<input id="trainingHourly" type="number" min="0" step="0.01"></label>
+                <label>Valor hora para formação (€)<input id="trainingHourly" type="number" readonly aria-readonly="true"><small>Calculado automaticamente: remuneração mensal bruta × 12 ÷ (52 × horas semanais).</small></label>
         <div class="readout"><span>Crédito de formação estimado</span><strong id="trainingCreditPreview">€0,00</strong></div>
       </div>
 
@@ -151,6 +150,7 @@
     <p><strong>Nota:</strong> ferramenta de simulação, não substitui validação jurídica/fiscal nem o cálculo oficial da entidade empregadora. Retenção na fonte ≠ IRS final anual.</p>
     <p>Fontes jurídicas usadas nesta versão: Código do Trabalho (arts. 131.º–134.º e 366.º), Lei n.º 69/2013, Lei n.º 13/2023, Código Contributivo (arts. 46.º e 48.º), CIRS art. 2.º n.º 4 e Despacho n.º 233-A/2026.</p>
   </footer>
-<script src="app.js"></script>
+<div id="appError" class="app-error" hidden></div>
+<script src="app.js" defer></script>
 </body>
 </html>
