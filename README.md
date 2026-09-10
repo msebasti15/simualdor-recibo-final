@@ -88,3 +88,12 @@ O detalhe de cada rubrica apresenta agora:
 - base tributável relevante.
 
 Nas rubricas pertencentes ao grupo normal, a taxa apresentada é a do grupo agregado — não uma taxa artificial calculada isoladamente para a rubrica. Nos subsídios de férias e Natal é mostrada a taxa da respetiva retenção autónoma. O resumo também mostra as taxas do cenário com e sem indemnização extra.
+
+
+## v9.3 — compensação legal + extra como um único montante fiscal
+
+Para efeitos de IRS, a indemnização legal e a indemnização extra são primeiro somadas. O limite fiscal do artigo 2.º, n.º 4 é aplicado ao total:
+- se `legal + extra <= limite`, a base tributável da compensação é zero;
+- se `legal + extra > limite`, apenas o excesso é tributável.
+
+A aplicação mantém duas linhas no resultado exclusivamente para validação manual. A distribuição do excesso tributável e do IRS entre “Indemnização legal” e “Indemnização extra” é proporcional ao respetivo bruto e serve apenas para apresentação; não representa duas tributações independentes nem duas linhas fiscais distintas de payroll.

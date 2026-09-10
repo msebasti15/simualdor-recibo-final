@@ -463,9 +463,15 @@ function recalc(forceComp=false,renderTraining=true){
   // CIRS 2.º/4: apenas o excesso da compensação sobre o limite fiscal integra
   // a base tributável. O direito vencido (salário, férias, subsídios) fica fora
   // desta exclusão e segue as regras normais.
+  // A compensação é fiscalmente avaliada como um único montante:
+  // indemnização legal + indemnização extra. Se o total não ultrapassar o
+  // limite do art. 2.º/4, nenhuma das duas linhas tem base sujeita a IRS.
+  // A separação abaixo é APENAS visual para validação manual do simulador.
   const taxableComp=Math.max(0,round2(compensation-exemptLimit));
-  const taxableLegalComp=Math.max(0,round2(legalComp-exemptLimit));
-  const taxableExtraComp=Math.max(0,round2(taxableComp-taxableLegalComp));
+  const taxableLegalComp=compensation>0
+    ? round2(taxableComp*(legalComp/compensation))
+    : 0;
+  const taxableExtraComp=round2(Math.max(0,taxableComp-taxableLegalComp));
 
   // Grupo normal de retenção mensal (CIRS 99.º-C/1-4).
   // Subsídios de férias e Natal ficam fora: têm retenção autónoma.
@@ -550,11 +556,11 @@ function recalc(forceComp=false,renderTraining=true){
       `${rateMeta('Categoria A · grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · sem SS segundo jurisprudência TCAS de 26-09-2024`,'training');
 
   addLine(lines,'Indemnização legal',legalComp,normalAlloc.legalComp,0,
-    `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · parcela desta rubrica sujeita ${eurFmt.format(taxableLegalComp)} · restante dentro do limite fiscal estimado`,'legalComp');
+    `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · compensação total ${eurFmt.format(compensation)} · limite ${eurFmt.format(exemptLimit)} · excesso tributável total ${eurFmt.format(taxableComp)} · quota visual desta linha ${eurFmt.format(taxableLegalComp)}`,'legalComp');
 
   if(extraComp>0)
     addLine(lines,'Indemnização extra',extraComp,normalAlloc.extraComp,0,
-      `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · parcela incremental sujeita ${eurFmt.format(taxableExtraComp)}`,'extraComp');
+      `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · compensação total ${eurFmt.format(compensation)} · limite ${eurFmt.format(exemptLimit)} · excesso tributável total ${eurFmt.format(taxableComp)} · quota visual desta linha ${eurFmt.format(taxableExtraComp)}`,'extraComp');
 
   const totals=lines.reduce((a,l)=>({gross:a.gross+l.gross,irs:a.irs+l.irs,ss:a.ss+l.ss,net:a.net+l.net}),{gross:0,irs:0,ss:0,net:0});
   for(const k in totals) totals[k]=round2(totals[k]);
@@ -594,6 +600,7 @@ function recalc(forceComp=false,renderTraining=true){
 
   const warnings=[];
   warnings.push(`IRS grupo normal: base ${eurFmt.format(normalTaxBaseWithExtra)} · taxa marginal ${normalRateInfo.marginal.toFixed(2)}% · taxa efetiva ${(normalTaxBaseWithExtra>0?normalIrsWithExtra/normalTaxBaseWithExtra*100:0).toFixed(2)}% · retenção ${eurFmt.format(normalIrsWithExtra)}. Cenário sem extra: base ${eurFmt.format(normalTaxBaseWithoutExtra)} · marginal ${normalRateInfoWithoutExtra.marginal.toFixed(2)}% · efetiva ${(normalTaxBaseWithoutExtra>0?normalIrsWithoutExtra/normalTaxBaseWithoutExtra*100:0).toFixed(2)}%. Subsídios de férias e Natal têm retenção autónoma.`);
+  warnings.push(`Compensação para IRS: indemnização legal + extra são avaliadas em conjunto (${eurFmt.format(compensation)}). Limite fiscal estimado ${eurFmt.format(exemptLimit)}; apenas o excesso de ${eurFmt.format(taxableComp)} é tributável. A divisão desse excesso e do IRS entre as duas linhas é apenas visual para validação manual.`);
   if(otherIrsOnly>0) warnings.push('Outros valores do último salário: a aplicação assume, conforme indicado no campo, incidência em IRS e ausência de incidência em Segurança Social. Confirma a classificação da verba no recibo/contrato, porque a incidência depende da natureza concreta do pagamento.');
   if(mealAllowance>0 && mealAllowanceTaxable===0) warnings.push('Subsídio de alimentação: foi considerada isenta a totalidade do valor introduzido. Se existir uma parcela acima do limite de isenção aplicável, indica-a no campo “Parcela sujeita a IRS/SS”.');
   if(start<date('2013-10-01')) warnings.push('Contrato anterior a 1/10/2013: o regime transitório da compensação tem limites e particularidades. Confirma o valor no simulador da ACT; o campo continua editável.');
