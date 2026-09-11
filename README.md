@@ -97,3 +97,21 @@ Para efeitos de IRS, a indemnização legal e a indemnização extra são primei
 - se `legal + extra > limite`, apenas o excesso é tributável.
 
 A aplicação mantém duas linhas no resultado exclusivamente para validação manual. A distribuição do excesso tributável e do IRS entre “Indemnização legal” e “Indemnização extra” é proporcional ao respetivo bruto e serve apenas para apresentação; não representa duas tributações independentes nem duas linhas fiscais distintas de payroll.
+
+
+## v10 — cessação por iniciativa do trabalhador
+
+Foi acrescentada a escolha da iniciativa da cessação.
+
+### Denúncia pelo trabalhador, sem justa causa
+- indemnização legal automática: zero;
+- continuam a ser apurados salário, férias, subsídios, formação e restantes créditos;
+- o simulador estima o aviso prévio (30/60 dias em contrato sem termo; 15/30 dias em contrato a termo, conforme duração);
+- dias de aviso prévio em falta são apresentados como ajuste negativo potencialmente devido ao empregador.
+
+### Resolução pelo trabalhador com justa causa
+- cálculo configurável entre 15 e 45 dias de retribuição base + diuturnidades por ano/fração;
+- mínimo global de três meses;
+- em contrato a termo é apresentado aviso para validação manual do eventual mínimo ligado às retribuições vincendas.
+
+A existência de justa causa e o valor definitivo da indemnização dependem dos factos concretos e podem exigir validação jurídica.

@@ -239,10 +239,72 @@ function updateSubsidyUI(start=null,end=null){
   }
 }
 
+
+const terminationReasons={
+  employer:[
+    ['collective','Despedimento coletivo'],
+    ['extinction','Extinção do posto de trabalho'],
+    ['inadaptation','Despedimento por inadaptação']
+  ],
+  worker:[
+    ['worker_resignation','Denúncia pelo trabalhador (sem justa causa)'],
+    ['worker_just_cause','Resolução pelo trabalhador com justa causa']
+  ]
+};
+
+function updateTerminationUI(){
+  const initiative=els.terminationInitiative?.value||'employer';
+  const current=els.terminationReason?.value;
+  const options=terminationReasons[initiative]||terminationReasons.employer;
+  els.terminationReason.innerHTML=options.map(([v,t])=>`<option value="${v}">${t}</option>`).join('');
+  if(options.some(([v])=>v===current)) els.terminationReason.value=current;
+  const reason=els.terminationReason.value;
+  const voluntary=reason==='worker_resignation';
+  const justCause=reason==='worker_just_cause';
+  els.justCauseRateWrap.hidden=!justCause;
+  els.noticeGivenWrap.hidden=!voluntary;
+  if(els.compensationHint){
+    els.compensationHint.textContent=voluntary
+      ? 'Na denúncia voluntária sem justa causa não é calculada indemnização legal de cessação. Mantêm-se os créditos laborais devidos. Se o aviso prévio não for integralmente cumprido, é estimado o valor devido ao empregador pelo período em falta.'
+      : justCause
+        ? 'Na resolução pelo trabalhador com justa causa, o art. 396.º prevê indemnização entre 15 e 45 dias de retribuição base e diuturnidades por ano ou fração, com mínimo de 3 meses. O número de dias é ajustável para simulação.'
+        : 'A compensação legal é estimada localmente. Para contratos anteriores a 2013, CCTs ou situações especiais, confirma o valor com o simulador ACT e podes substituir manualmente o campo.';
+  }
+}
+
+function requiredWorkerNoticeDays(start,end){
+  const type=els.contractType?.value||'indefinite';
+  const serviceDays=daysBetween(start,new Date(end.getTime()+dayMs));
+  if(type==='indefinite') return serviceDays < 2*365.2425 ? 30 : 60;
+  // Art. 400.º/3: nos contratos a termo, 15 dias se a duração for inferior
+  // a seis meses e 30 dias se for igual ou superior; no termo incerto
+  // considera-se a duração já decorrida.
+  return serviceDays < 365.2425/2 ? 15 : 30;
+}
+
+function workerNoticeShortfall(){
+  if(els.terminationReason?.value!=='worker_resignation' || !els.startDate.value || !els.endDate.value)
+    return {required:0,given:0,missing:0,value:0};
+  const start=date(els.startDate.value), end=date(els.endDate.value);
+  const required=requiredWorkerNoticeDays(start,end);
+  const given=clamp(Math.floor(num('noticeGivenDays')),0,required);
+  const missing=Math.max(0,required-given);
+  const monthly=num('baseSalary')+num('seniorityPay');
+  return {required,given,missing,value:round2(monthly/30*missing)};
+}
+
 function calculateLegalComp(){
   const start=date(els.startDate.value), end=date(els.endDate.value);
   if(!els.startDate.value||!els.endDate.value||end<=start) return 0;
   const salary=num('baseSalary')+num('seniorityPay');
+  const reason=els.terminationReason?.value;
+  if(reason==='worker_resignation') return 0;
+  if(reason==='worker_just_cause'){
+    const service=yearsExact(start,new Date(end.getTime()+dayMs));
+    const daysPerYear=clamp(num('justCauseDaysPerYear')||30,15,45);
+    // Art. 396.º: 15–45 dias/ano ou fração, nunca menos de 3 meses.
+    return round2(Math.max(salary*3,(salary/30)*daysPerYear*service));
+  }
   const RMMG=920;
   const cappedMonthly=Math.min(salary,20*RMMG);
   const daily=cappedMonthly/30;
@@ -365,7 +427,12 @@ function recalc(forceComp=false,renderTraining=true){
   const validDates=els.startDate.value&&els.endDate.value;
   const start=validDates?date(els.startDate.value):new Date(), end=validDates?date(els.endDate.value):new Date();
   const base=num('baseSalary'), seniority=num('seniorityPay'), monthly=base+seniority;
-  if(forceComp || !els.legalComp.value) els.legalComp.value=calculateLegalComp().toFixed(2);
+  updateTerminationUI();
+  if(forceComp || !els.legalComp.value || els.terminationReason.value==='worker_resignation')
+    els.legalComp.value=calculateLegalComp().toFixed(2);
+  const notice=workerNoticeShortfall();
+  if(els.noticeRequiredHint && els.terminationReason.value==='worker_resignation')
+    els.noticeRequiredHint.textContent=`Aviso prévio legal estimado: ${notice.required} dias. Em falta: ${notice.missing} dias (${eurFmt.format(notice.value)}).`;
   const weeklyHours=Math.max(1,num('weeklyHours')||40);
   const trainingHourly=monthly>0 ? round2(monthly*12/(52*weeklyHours)) : 0;
   els.trainingHourly.value=trainingHourly.toFixed(2);
@@ -562,6 +629,10 @@ function recalc(forceComp=false,renderTraining=true){
     addLine(lines,'Indemnização extra',extraComp,normalAlloc.extraComp,0,
       `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · compensação total ${eurFmt.format(compensation)} · limite ${eurFmt.format(exemptLimit)} · excesso tributável total ${eurFmt.format(taxableComp)} · quota visual desta linha ${eurFmt.format(taxableExtraComp)}`,'extraComp');
 
+  if(notice.value>0)
+    addLine(lines,'Aviso prévio não cumprido',-notice.value,0,0,
+      `${notice.missing} dias em falta de ${notice.required} dias estimados · dedução/valor devido ao empregador, não é uma rubrica remuneratória`,'salary');
+
   const totals=lines.reduce((a,l)=>({gross:a.gross+l.gross,irs:a.irs+l.irs,ss:a.ss+l.ss,net:a.net+l.net}),{gross:0,irs:0,ss:0,net:0});
   for(const k in totals) totals[k]=round2(totals[k]);
 
@@ -601,6 +672,14 @@ function recalc(forceComp=false,renderTraining=true){
   const warnings=[];
   warnings.push(`IRS grupo normal: base ${eurFmt.format(normalTaxBaseWithExtra)} · taxa marginal ${normalRateInfo.marginal.toFixed(2)}% · taxa efetiva ${(normalTaxBaseWithExtra>0?normalIrsWithExtra/normalTaxBaseWithExtra*100:0).toFixed(2)}% · retenção ${eurFmt.format(normalIrsWithExtra)}. Cenário sem extra: base ${eurFmt.format(normalTaxBaseWithoutExtra)} · marginal ${normalRateInfoWithoutExtra.marginal.toFixed(2)}% · efetiva ${(normalTaxBaseWithoutExtra>0?normalIrsWithoutExtra/normalTaxBaseWithoutExtra*100:0).toFixed(2)}%. Subsídios de férias e Natal têm retenção autónoma.`);
   warnings.push(`Compensação para IRS: indemnização legal + extra são avaliadas em conjunto (${eurFmt.format(compensation)}). Limite fiscal estimado ${eurFmt.format(exemptLimit)}; apenas o excesso de ${eurFmt.format(taxableComp)} é tributável. A divisão desse excesso e do IRS entre as duas linhas é apenas visual para validação manual.`);
+  if(els.terminationReason.value==='worker_resignation'){
+    warnings.push(`Cessação por iniciativa do trabalhador sem justa causa: indemnização legal automática = €0. Mantêm-se salário e demais créditos laborais devidos na cessação.`);
+    if(notice.value>0) warnings.push(`Aviso prévio: estimados ${notice.required} dias; indicados ${notice.given} dias cumpridos; ${notice.missing} dias em falta → ${eurFmt.format(notice.value)} potencialmente devidos ao empregador, sem prejuízo de dano adicional legalmente exigível.`);
+  }
+  if(els.terminationReason.value==='worker_just_cause'){
+    warnings.push('Resolução pelo trabalhador com justa causa: a indemnização automática usa o art. 396.º (15–45 dias/ano ou fração, mínimo 3 meses). A existência de justa causa e o número de dias aplicável dependem do caso concreto.');
+    if(els.contractType.value!=='indefinite') warnings.push('Contrato a termo + resolução com justa causa: pode existir um mínimo adicional ligado às retribuições vincendas até ao termo; como o simulador não conhece a data contratual prevista para o termo, confirma ou substitui manualmente a indemnização.');
+  }
   if(otherIrsOnly>0) warnings.push('Outros valores do último salário: a aplicação assume, conforme indicado no campo, incidência em IRS e ausência de incidência em Segurança Social. Confirma a classificação da verba no recibo/contrato, porque a incidência depende da natureza concreta do pagamento.');
   if(mealAllowance>0 && mealAllowanceTaxable===0) warnings.push('Subsídio de alimentação: foi considerada isenta a totalidade do valor introduzido. Se existir uma parcela acima do limite de isenção aplicável, indica-a no campo “Parcela sujeita a IRS/SS”.');
   if(start<date('2013-10-01')) warnings.push('Contrato anterior a 1/10/2013: o regime transitório da compensação tem limites e particularidades. Confirma o valor no simulador da ACT; o campo continua editável.');
@@ -621,6 +700,9 @@ function initApp(){
     document.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',()=>recalc(false,true)));
     els.startDate.addEventListener('change',()=>recalc(false,true));
     els.endDate.addEventListener('change',()=>recalc(false,true));
+    els.terminationInitiative.addEventListener('change',()=>{ updateTerminationUI(); recalc(true,true); });
+    els.terminationReason.addEventListener('change',()=>recalc(true,true));
+    els.justCauseDaysPerYear.addEventListener('input',()=>recalc(true,true));
     els.useAutoComp.addEventListener('click',()=>recalc(true));
     els.printBtn.addEventListener('click',()=>window.print());
     recalc(true);

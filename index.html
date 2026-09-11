@@ -36,12 +36,22 @@
         <label>Remuneração base mensal (€)<input id="baseSalary" type="number" min="0" step="0.01" value="3000"></label>
         <label>Diuturnidades mensais (€)<input id="seniorityPay" type="number" min="0" step="0.01" value="0"></label>
         <label>Média remunerações regulares tributáveis — últimos 12 meses (€)<input id="avg12" type="number" min="0" step="0.01" value="3000"></label>
-        <label>Motivo da cessação
-          <select id="terminationReason">
-            <option value="collective">Despedimento coletivo</option>
-            <option value="extinction" selected>Extinção do posto de trabalho</option>
-            <option value="inadaptation">Despedimento por inadaptação</option>
+        <label>Iniciativa da cessação
+          <select id="terminationInitiative">
+            <option value="employer" selected>Empregador</option>
+            <option value="worker">Trabalhador</option>
           </select>
+        </label>
+        <label>Motivo da cessação
+          <select id="terminationReason"></select>
+        </label>
+        <label id="justCauseRateWrap" hidden>Dias de compensação por ano — justa causa
+          <input id="justCauseDaysPerYear" type="number" min="15" max="45" step="1" value="30">
+          <small>Art. 396.º: entre 15 e 45 dias por ano/fração; mínimo global de 3 meses de retribuição base e diuturnidades.</small>
+        </label>
+        <label id="noticeGivenWrap" hidden>Aviso prévio efetivamente cumprido (dias)
+          <input id="noticeGivenDays" type="number" min="0" step="1" value="0">
+          <small id="noticeRequiredHint">O simulador calcula automaticamente o aviso prévio legal estimado.</small>
         </label>
       </div>
 
@@ -85,7 +95,7 @@
         </label>
         <label>Compensação adicional / acordo (€)<input id="extraComp" type="number" min="0" step="0.01" value="0"></label>
       </div>
-      <p class="hint">A compensação legal é estimada localmente. Para contratos anteriores a 2013, CCTs ou situações especiais, confirma o valor com o simulador ACT e podes substituir manualmente o campo.</p>
+      <p id="compensationHint" class="hint">A compensação legal é estimada localmente. Para contratos anteriores a 2013, CCTs ou situações especiais, confirma o valor com o simulador ACT e podes substituir manualmente o campo.</p>
 
       <h2>4. Formação profissional</h2>
       <p class="hint">São apresentados automaticamente os últimos 5 anos civis abrangidos pelo contrato, como no simulador da ACT. Em contrato sem termo, o modo ACT considera 40 h por ano civil, incluindo o ano parcial de admissão/cessação. Nos contratos a termo, o mínimo é proporcional à duração do contrato nesse ano. Indica as horas efetivamente ministradas; por defeito ficam a 0.</p>
