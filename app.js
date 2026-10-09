@@ -53,6 +53,29 @@ function civilYearOverlap(start,end,year){
   return {start:a,end:new Date(b.getTime()-dayMs),days:(b-a)/dayMs,yearDays:(ye-ys)/dayMs};
 }
 
+// Histórico de remunerações regulares tributáveis: 12 meses civis anteriores ao mês de cessação.
+function historyMonths(end){
+  return Array.from({length:12},(_,i)=>{
+    const d=new Date(end.getFullYear(),end.getMonth()-12+i,1,12);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  });
+}
+function renderSalaryHistory(end){
+  const keys=historyMonths(end);
+  const old={};
+  document.querySelectorAll('.salary-history-month').forEach(e=>old[e.dataset.month]=e.value);
+  const signature=keys.join('|');
+  if(els.salaryHistoryRows.dataset.signature!==signature){
+    els.salaryHistoryRows.innerHTML=keys.map(k=>`<label>${k}<input class="salary-history-month" data-month="${k}" type="number" min="0" step="0.01" placeholder="Remuneração regular" value="${old[k]??''}"></label>`).join('');
+    els.salaryHistoryRows.dataset.signature=signature;
+    document.querySelectorAll('.salary-history-month').forEach(e=>e.addEventListener('input',()=>recalc(false,false)));
+  }
+  const inputs=[...document.querySelectorAll('.salary-history-month')];
+  const completed=inputs.every(e=>e.value.trim()!=='' && Number.isFinite(Number(e.value)) && Number(e.value)>=0);
+  const avg=completed?round2(inputs.reduce((a,e)=>a+Number(e.value),0)/12):null;
+  els.salaryHistorySummary.textContent=completed?`Média calculada: ${eurFmt.format(avg)} (12 meses). Substitui a média manual no limite fiscal.`:`${inputs.filter(e=>e.value.trim()!=='').length}/12 meses preenchidos — mantém-se a média manual.`;
+  return avg;
+}
 const trainingState={};
 function trainingYearsForContract(){
   if(!els.startDate.value||!els.endDate.value) return [];
@@ -221,10 +244,26 @@ function priorDuodecimosFactor(start,end){
   return completedMonths/12;
 }
 
+function useHolidayHistory(start,end){
+  return !!(start&&end&&end>=start&&end.getFullYear()===start.getFullYear()+1&&isShortVacationCase(start,end)&&els.subsidyMode.value!=='duodecimos');
+}
+function holidayLumpReceived(start,end){
+  if(els.subsidyMode.value==='duodecimos') return 0;
+  if(useHolidayHistory(start,end)) return round2(Math.max(0,num('holidayPriorYearPaid'))+Math.max(0,num('holidayCurrentYearPaid')));
+  return Math.max(0,num('holidayReceived'));
+}
+
 function updateSubsidyUI(start=null,end=null){
   const mode=els.subsidyMode.value;
   const asksLump=mode!=='duodecimos';
-  els.holidayReceivedWrap.hidden=!asksLump;
+  const history=useHolidayHistory(start,end);
+  els.holidayReceivedWrap.hidden=!asksLump || history;
+  els.holidayHistoryWrap.hidden=!history;
+  if(history){
+    els.holidayPriorLabel.textContent=`Subsídio recebido em ${start.getFullYear()} (€)`;
+    els.holidayCurrentLabel.textContent=`Subsídio recebido em ${end.getFullYear()} (€)`;
+    els.holidayHistoryTotal.textContent=eurFmt.format(holidayLumpReceived(start,end));
+  }
   els.christmasReceivedWrap.hidden=!asksLump;
 
   if(mode==='full'){
@@ -393,9 +432,9 @@ function irsRateInfo(amount,status,deps){
       [2240,19.38],[2773,22.77],[3389,25.70],[5965,28.81],[20265,38.43],[Infinity,47.17]
     ]
   };
-  const rows=status==='married_sole'?tables.sole:tables.single;
+  const rows=status==='married1'?tables.sole:tables.single;
   let marginal=(rows.find(r=>amount<=r[0])||rows[rows.length-1])[1];
-  if(status!=='married_sole' && deps>=3 && marginal>0) marginal=Math.max(0,marginal-1);
+  if(status!=='married1' && deps>=3 && marginal>0) marginal=Math.max(0,marginal-1);
   return {tax,effective,marginal};
 }
 
@@ -441,10 +480,14 @@ function recalc(forceComp=false,renderTraining=true){
     : 'Férias já gozadas no ano da cessação (dias úteis)';
   els.trainingMethodWrap.hidden=els.contractType.value!=='indefinite';
   updateSubsidyUI(start,end);
+  els.salaryHistoryWrap.hidden=!validDates;
+  const historyAvg=validDates?renderSalaryHistory(end):null;
+  els.holidayReferenceYearWrap.hidden=!specialVacation;
   if(renderTraining) renderTrainingYears();
 
-  const status=els.taxStatus.value, deps=Math.max(0,Math.floor(num('dependents')));
+  const status=els.taxStatus.value;
   if(status==='single0') els.dependents.value=0;
+  const deps=status==='single0'?0:Math.max(0,Math.floor(num('dependents')));
 
   const salaryGross=monthly*clamp(num('salaryDays'),0,30)/30;
   const mealAllowance=Math.max(0,num('mealAllowance'));
@@ -474,7 +517,7 @@ function recalc(forceComp=false,renderTraining=true){
   else if (mode === 'mixed') duoShare = 0.5;
   const holidayDuosPaid=round2(monthly*priorFactor*duoShare);
   const christmasDuosPaid=round2(monthly*priorFactor*duoShare);
-  const holidayLumpPaid=mode==='duodecimos'?0:Math.max(0,num('holidayReceived'));
+  const holidayLumpPaid=holidayLumpReceived(start,end);
   const christmasLumpPaid=mode==='duodecimos'?0:Math.max(0,num('christmasReceived'));
 
   let vestedHolidayAllowanceDue=0;
@@ -485,9 +528,12 @@ function recalc(forceComp=false,renderTraining=true){
       vestedHolidayAllowanceDue=0;
       proportionalHolidayAllowanceDue=Math.max(0,round2(proportionalHolidayAllowanceEntitlement-holidayLumpPaid));
     } else {
+      // Pagamentos prévios não podem desaparecer do cálculo quando excedem
+      // o subsídio vencido. O excedente abate apenas ao saldo aritmético do
+      // proporcional; qualquer recuperação de excesso permanece informativa.
       vestedHolidayAllowanceDue=Math.max(0,round2(vestedHolidayAllowanceEntitlement-holidayLumpPaid));
-      // Fora do limite especial, a ACT mantém separado o proporcional do ano.
-      proportionalHolidayAllowanceDue=proportionalHolidayAllowanceEntitlement;
+      const paidBeyondVested=Math.max(0,round2(holidayLumpPaid-vestedHolidayAllowanceEntitlement));
+      proportionalHolidayAllowanceDue=Math.max(0,round2(proportionalHolidayAllowanceEntitlement-paidBeyondVested));
     }
     christmasDue=Math.max(0,round2(christmasEntitlement-christmasLumpPaid));
   } else {
@@ -534,7 +580,7 @@ function recalc(forceComp=false,renderTraining=true){
   const legalComp=num('legalComp'), extraComp=num('extraComp'), compensation=round2(legalComp+extraComp);
 
   const service=validDates&&end>start?yearsExact(start,new Date(end.getTime()+dayMs)):0;
-  let exemptLimit=num('avg12')*service;
+  let exemptLimit=(historyAvg===null?num('avg12'):historyAvg)*service;
   if(els.usedRelief5y.checked||els.newLink24m.checked) exemptLimit=0;
 
   // CIRS 2.º/4: apenas o excesso da compensação sobre o limite fiscal integra
@@ -661,7 +707,7 @@ function recalc(forceComp=false,renderTraining=true){
     <div><span>Subsídio de férias vencido</span><strong>${eurFmt.format(vestedHolidayAllowanceEntitlement)}</strong></div>
     <div><span>Subsídio de férias proporcional / regime especial</span><strong>+ ${eurFmt.format(proportionalHolidayAllowanceEntitlement)}</strong></div>
     <div><span>Direito bruto total</span><strong>${eurFmt.format(holidayAllowanceEntitlementTotal)}</strong></div>
-    <div><span>Subsídio anteriormente recebido (pagamento único)</span><strong>− ${eurFmt.format(holidayLumpPaid)}</strong></div>
+    ${useHolidayHistory(start,end)?`<div><span>Recebido em ${start.getFullYear()}</span><strong>− ${eurFmt.format(Math.max(0,num('holidayPriorYearPaid')))}</strong></div><div><span>Recebido em ${end.getFullYear()}</span><strong>− ${eurFmt.format(Math.max(0,num('holidayCurrentYearPaid')))}</strong></div>`:`<div><span>Subsídio anteriormente recebido (pagamento único)</span><strong>− ${eurFmt.format(holidayLumpPaid)}</strong></div>`}
     <div><span>Duodécimos estimados já recebidos</span><strong>− ${eurFmt.format(holidayDuosPaid)}</strong></div>
     <div><span>Saldo aritmético (pode ser negativo)</span><strong>${eurFmt.format(holidayBalanceRaw)}</strong></div>
     <div><span>Subsídio incluído no recibo final</span><strong>${eurFmt.format(holidayAllowanceDue)}</strong></div>
@@ -713,12 +759,20 @@ function recalc(forceComp=false,renderTraining=true){
     warnings.push('Resolução pelo trabalhador com justa causa: a indemnização automática usa o art. 396.º (15–45 dias/ano ou fração, mínimo 3 meses). A existência de justa causa e o número de dias aplicável dependem do caso concreto.');
     if(els.contractType.value!=='indefinite') warnings.push('Contrato a termo + resolução com justa causa: pode existir um mínimo adicional ligado às retribuições vincendas até ao termo; como o simulador não conhece a data contratual prevista para o termo, confirma ou substitui manualmente a indemnização.');
   }
+  if(els.agreementSs.value==='review') warnings.push('Segurança Social sobre a compensação: enquadramento ainda por confirmar. O valor líquido NÃO inclui esta contribuição potencial; não usar como valor definitivo.');
+  if(els.unemploymentRight.value==='yes' && els.agreementSs.value==='exempt') warnings.push('ATENÇÃO: indicaste direito a desemprego e compensação isenta de SS; confirma a compatibilidade com o art. 46.º/2/v do Código Contributivo.');
+  if(els.unemploymentRight.value==='no' && els.agreementSs.value==='subject') warnings.push('ATENÇÃO: selecionaste SS sobre compensação sem direito a desemprego; confirma a base legal da incidência.');
+  if(historyAvg===null) warnings.push('Média fiscal de 12 meses: valor manual; preenche todos os meses do histórico para calcular automaticamente. Os meses de referência e a natureza regular/tributável das remunerações exigem confirmação.');
+  else warnings.push('Média fiscal: foram usados os 12 meses civis anteriores ao mês da cessação. Confirma com o processamento salarial se o período de referência deve incluir o mês da cessação e se cada rubrica integra remuneração regular tributável.');
+  if(vac.special) warnings.push('Regime especial de férias: o direito global foi valorizado à remuneração base atual. Se houve alterações salariais, períodos de suspensão ou direitos já liquidados, o montante exige validação jurídica/contabilística; os pagamentos históricos não são automaticamente revalorizados.');
+  if(vac.special && els.holidayReferenceYear.value==='prior') warnings.push('Subsídio de férias respeitante a ano anterior: a retenção autónoma pode exigir cálculo separado por ano de referência. O valor líquido apresentado é provisório e deve ser conferido no processamento salarial.');
   if(els.agreementSs.value==='subject') warnings.push('Segurança Social: selecionaste incidência contributiva sobre a compensação; confirma se o acordo dá direito a prestações de desemprego e a natureza de cada verba.');
   if(otherIrsOnly>0) warnings.push('Outros valores do último salário: a aplicação assume, conforme indicado no campo, incidência em IRS e ausência de incidência em Segurança Social. Confirma a classificação da verba no recibo/contrato, porque a incidência depende da natureza concreta do pagamento.');
   if(mealAllowance>0 && mealAllowanceTaxable===0) warnings.push('Subsídio de alimentação: foi considerada isenta a totalidade do valor introduzido. Se existir uma parcela acima do limite de isenção aplicável, indica-a no campo “Parcela sujeita a IRS/SS”.');
   if(start<date('2013-10-01')) warnings.push('Contrato anterior a 1/10/2013: o regime transitório da compensação tem limites e particularidades. Confirma o valor no simulador da ACT; o campo continua editável.');
   if(vac.capApplied) warnings.push(`Férias: aplicado o limite especial do artigo 245.º, n.º 3. Direito global estimado ${eurFmt.format(vac.totalVacationEntitlementValue||0)}; os dias já gozados são abatidos a ${eurFmt.format(base/22)} por dia.`);
   else warnings.push('Férias: foram considerados 22 dias vencidos a 1 de janeiro (quando aplicável), abatendo os dias gozados, e os proporcionais segundo a proporcionalidade direta usada pela ACT (meses/12 + dias/365).');
+  if(mode!=='full') warnings.push('Duodécimos anteriores: estimados por calendário, não por pagamentos efetivos. Verifica nos recibos e ajusta a conferência antes de aceitar o líquido.');
   if(mode!=='full') warnings.push(`Subsídios: foram estimados ${eurFmt.format(holidayDuosPaid)} de subsídio de férias e ${eurFmt.format(christmasDuosPaid)} de subsídio de Natal já pagos em duodécimos antes do recibo final.`);
   if(els.usedRelief5y.checked) warnings.push('Assinalaste utilização do regime fiscal nos últimos 5 anos: nesta simulação a compensação é tratada como totalmente tributável para IRS.');
   if(els.newLink24m.checked) warnings.push('Assinalaste novo vínculo com a mesma entidade nos 24 meses seguintes: nesta simulação a compensação é tratada como totalmente tributável para IRS.');

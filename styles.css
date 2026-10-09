@@ -8,3 +8,5 @@
 
 /* Detailed vacation and holiday-allowance audit */
 .audit-section{margin:1.25rem 0;padding:1rem;border:1px solid var(--border,#d5d8df);border-radius:12px}.audit-section h3{margin:.65rem 0}.audit-grid{display:grid;gap:.5rem;margin-bottom:1rem}.audit-grid>div{display:flex;justify-content:space-between;gap:1rem;border-bottom:1px solid #ddd;padding:.4rem 0}.audit-grid strong{text-align:right;white-space:nowrap}.audit-grid small{display:block;line-height:1.5}.audit-alert{padding:.75rem;border:1px solid #b37d28;border-radius:8px} @media print{.audit-section{break-inside:avoid}}
+
+.history-fields{grid-column:1/-1;padding:14px;border:1px solid var(--border,#d9d9d9);border-radius:10px}.history-fields[hidden]{display:none!important}

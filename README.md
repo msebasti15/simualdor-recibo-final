@@ -129,3 +129,19 @@ O cálculo de férias já aplicava o limite do art. 245.º/3 à duração global
 
 ## v12 — auditoria explícita de férias e subsídio de férias
 Apresenta dias adquiridos, gozados, saldo de dias e valor bruto correspondente. Mostra também subsídio vencido, proporcional, direito total, pagamentos anteriores, duodécimos e saldo aritmético (incluindo negativo). Saldos negativos são informativos: nunca geram descontos automáticos. O recibo continua a aplicar as regras existentes de separação de subsídios.
+
+
+## v13 — histórico de pagamentos do subsídio de férias
+Quando a data de cessação está no ano civil imediatamente seguinte ao da admissão e se aplica o limite especial de férias do artigo 245.º/3, o campo agregado de subsídio já recebido é substituído automaticamente por dois campos: valor bruto recebido no ano da admissão e valor bruto recebido no ano da cessação. A soma alimenta o mesmo cálculo fiscal e de acerto já existente, e cada pagamento aparece discriminado na conferência. Fora desse caso mantém-se o fluxo anterior. Não existem valores pessoais predefinidos.
+
+
+## v14 — Auditoria e limites
+- Histórico opcional de 12 meses anteriores à cessação: média fiscal calculada apenas quando todos os 12 meses estão preenchidos. Não confundir remuneração regular tributável com salário base.
+- Confirmação expressa de direito a desemprego e incidência contributiva da compensação; predefinição «por confirmar» não garante líquido definitivo.
+- Ano de referência do subsídio de férias no caso especial, com alerta sobre retenção autónoma de anos anteriores.
+- Pagamentos históricos de subsídio continuam a ser apresentados separadamente e saldos negativos não são descontados automaticamente.
+- Limitações ainda abertas: valorização de direitos com alterações salariais, distribuição fiscal de subsídios por ano, duodécimos reais e validação integral das tabelas IRS. NÃO é um motor de processamento salarial certificado.
+
+
+## v15 — validação técnica parcial
+Consultar `RELATORIO_VALIDACAO_V15.md`. O projeto não está certificado para processamento salarial real.

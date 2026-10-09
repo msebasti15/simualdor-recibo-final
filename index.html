@@ -19,7 +19,7 @@
   <main class="layout">
     <section class="panel form-panel">
       <div class="notice">
-        <strong>Versão v12:</strong> cálculo local de férias, subsídios, formação, compensação, IRS e Segurança Social. As férias e os proporcionais são agora derivados das datas do contrato e dos dias já gozados.
+        <strong>Versão v14:</strong> cálculo local de férias, subsídios, formação, compensação, IRS e Segurança Social. As férias e os proporcionais são agora derivados das datas do contrato e dos dias já gozados.
       </div>
 
       <h2>1. Contrato e remuneração</h2>
@@ -36,6 +36,12 @@
         <label>Remuneração base mensal (€)<input id="baseSalary" type="number" min="0" step="0.01" value="3000"></label>
         <label>Diuturnidades mensais (€)<input id="seniorityPay" type="number" min="0" step="0.01" value="0"></label>
         <label>Média remunerações regulares tributáveis — últimos 12 meses (€)<input id="avg12" type="number" min="0" step="0.01" value="3000"></label>
+        <div id="salaryHistoryWrap" class="history-fields" hidden style="grid-column:1/-1">
+          <p><strong>Histórico salarial — cálculo da média fiscal</strong></p>
+          <p class="hint">Opcional: preenche os 12 meses anteriores à cessação (incluindo o mês anterior, não o mês final). Indica a remuneração mensal regular tributável de cada mês, incluindo componentes regulares. Se incompleto, a média manual mantém-se.</p>
+          <div id="salaryHistoryRows" class="grid cols-2"></div>
+          <p id="salaryHistorySummary" class="hint"></p>
+        </div>
         <label>Iniciativa da cessação
           <select id="terminationInitiative">
             <option value="employer" selected>Empregador</option>
@@ -79,6 +85,17 @@
           </select>
         </label>
         <label id="holidayReceivedWrap"><span id="holidayReceivedLabel">Subsídio de férias já recebido por inteiro (€)</span><input id="holidayReceived" type="number" min="0" step="0.01" value="0"></label>
+        <div id="holidayHistoryWrap" hidden class="history-fields">
+          <p><strong>Pagamentos de subsídio de férias durante o contrato</strong></p>
+          <p class="hint">Como a cessação ocorre no ano civil seguinte à admissão, indica separadamente os pagamentos brutos de cada ano. O simulador soma-os automaticamente, sem alterar os valores históricos.</p>
+          <label><span id="holidayPriorLabel">Subsídio recebido no ano da admissão (€)</span><input id="holidayPriorYearPaid" type="number" min="0" step="0.01" value="0"></label>
+          <label><span id="holidayCurrentLabel">Subsídio recebido no ano da cessação (€)</span><input id="holidayCurrentYearPaid" type="number" min="0" step="0.01" value="0"></label>
+          <p class="hint">Total já recebido: <strong id="holidayHistoryTotal">0,00 €</strong>. O campo agregado acima fica oculto neste cenário.</p>
+        </div>
+        <label id="holidayReferenceYearWrap" hidden>Ano a que respeita o subsídio de férias pago no acerto
+          <select id="holidayReferenceYear"><option value="current">Ano da cessação</option><option value="prior">Ano anterior</option></select>
+          <small>Quando a verba respeitar ao ano anterior, confirmar retenção autónoma com a entidade processadora.</small>
+        </label>
         <label id="christmasReceivedWrap"><span>Subsídio de Natal já recebido / adiantado (€)</span><input id="christmasReceived" type="number" min="0" step="0.01" value="0"></label>
       </div>
       <p id="subsidyHint" class="hint"></p>
@@ -95,8 +112,11 @@
         </label>
         <label>Compensação adicional / acordo (€)<input id="extraComp" type="number" min="0" step="0.01" value="0"></label>
       </div>
+      <label id="unemploymentRightWrap">O acordo confere direito a prestações de desemprego?
+<select id="unemploymentRight"><option value="unknown" selected>Por confirmar</option><option value="yes">Sim, confirmado</option><option value="no">Não, confirmado</option></select>
+<small>O simulador não determina a elegibilidade. Confirma o fundamento legal e o enquadramento com a entidade processadora.</small></label>
       <label>Segurança Social sobre compensação por mútuo acordo
-<select id="agreementSs"><option value="exempt" selected>Não sujeita (sem enquadramento contributivo aplicável)</option><option value="subject">Sujeita a SS (acordo com direito a prestações de desemprego — art. 46.º/2/v)</option></select>
+<select id="agreementSs"><option value="exempt">Não sujeita (sem enquadramento contributivo aplicável)</option><option value="subject">Sujeita a SS (acordo com direito a prestações de desemprego — art. 46.º/2/v)</option><option value="review" selected>Por confirmar — simular sem SS e assinalar risco</option></select>
 <small>A compensação por acordo pode integrar a base contributiva em situações com direito a prestações de desemprego. Confirma o enquadramento concreto; o IRS é independente.</small></label>
 <p id="compensationHint" class="hint">A compensação legal é estimada localmente. Para contratos anteriores a 2013, CCTs ou situações especiais, confirma o valor com o simulador ACT e podes substituir manualmente o campo.</p>
 
