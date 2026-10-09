@@ -126,3 +126,6 @@ O cálculo de férias já aplicava o limite do art. 245.º/3 à duração global
 - Regra especial de férias do art. 245.º/3: campo de férias gozadas explicitamente refere todo o contrato; fora do regime especial refere ano de cessação.
 - Segurança Social da compensação por acordo: opção não sujeita/sujeita, consoante enquadramento do art. 46.º/2/v do Código Contributivo. Não assumir que todo o mútuo acordo é isento.
 - IRS: retenção normal agregada e subsídios autónomos. A retenção é estimativa e exige conferência com as tabelas e processamento do empregador.
+
+## v12 — auditoria explícita de férias e subsídio de férias
+Apresenta dias adquiridos, gozados, saldo de dias e valor bruto correspondente. Mostra também subsídio vencido, proporcional, direito total, pagamentos anteriores, duodécimos e saldo aritmético (incluindo negativo). Saldos negativos são informativos: nunca geram descontos automáticos. O recibo continua a aplicar as regras existentes de separação de subsídios.

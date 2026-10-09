@@ -202,6 +202,9 @@ function vacationModel(start,end,baseMonthly){
     vestedDays:round2(vestedDays),
     propDays:round2(propDueDays),
     theoreticalPropDays:round2(propDays),
+    daysEntitled:round2(special?capDays:(hasVested?annualDays:0)+propDays),
+    daysTaken:round2(takenYear),
+    daysBalanceRaw:round2((special?capDays:(hasVested?annualDays:0)+propDays)-takenYear),
     vestedValue,
     propValue
   };
@@ -498,6 +501,12 @@ function recalc(forceComp=false,renderTraining=true){
     christmasDue=Math.max(0,round2(christmasEntitlement-christmasDuosPaid-christmasLumpPaid));
   }
   const holidayAllowanceDue=round2(vestedHolidayAllowanceDue+proportionalHolidayAllowanceDue);
+  const holidayAllowanceEntitlementTotal=round2(vestedHolidayAllowanceEntitlement+proportionalHolidayAllowanceEntitlement);
+  const holidayPreviouslyPaid=round2(holidayLumpPaid+holidayDuosPaid);
+  const holidayBalanceRaw=round2(holidayAllowanceEntitlementTotal-holidayPreviouslyPaid);
+  // Keep an overpayment as a separate informational adjustment; do not
+  // automatically turn it into a negative payroll line or a tax deduction.
+  const holidayOverpayment=Math.max(0,round2(-holidayBalanceRaw));
   const holidayAllowanceEntitlement=round2(vestedHolidayAllowanceEntitlement+proportionalHolidayAllowanceEntitlement);
 
   // Total comparável ao "Montante global" do simulador ACT:
@@ -638,6 +647,26 @@ function recalc(forceComp=false,renderTraining=true){
   const totals=lines.reduce((a,l)=>({gross:a.gross+l.gross,irs:a.irs+l.irs,ss:a.ss+l.ss,net:a.net+l.net}),{gross:0,irs:0,ss:0,net:0});
   for(const k in totals) totals[k]=round2(totals[k]);
 
+  // Transparent audit trail: holiday entitlement, taken days, prior payments,
+  // and the arithmetic balance, including negative results.
+  const fDays=x=>Number(x).toFixed(2).replace('.',',');
+  const vacationBalance=Math.max(0,vac.daysBalanceRaw||0);
+  els.vacationAudit.innerHTML=`
+    <div><span>Férias adquiridas (direito global estimado)</span><strong>${fDays(vac.daysEntitled||0)} dias úteis</strong></div>
+    <div><span>Férias já gozadas</span><strong>− ${fDays(vac.daysTaken||0)} dias úteis</strong></div>
+    <div><span>Férias ainda por gozar / compensar</span><strong>${fDays(vacationBalance)} dias úteis</strong></div>
+    <div><span>Valor bruto das férias por gozar</span><strong>${eurFmt.format(round2(vacationVestedGross+vacationPropGross))}</strong></div>
+    <small>Conta: ${fDays(vac.daysEntitled||0)} − ${fDays(vac.daysTaken||0)} = ${fDays(vac.daysBalanceRaw||0)} dias. Valor calculado sobre a retribuição base e o regime de férias aplicável${vac.special?' (limite do art. 245.º/3)':''}.</small>`;
+  els.holidayAudit.innerHTML=`
+    <div><span>Subsídio de férias vencido</span><strong>${eurFmt.format(vestedHolidayAllowanceEntitlement)}</strong></div>
+    <div><span>Subsídio de férias proporcional / regime especial</span><strong>+ ${eurFmt.format(proportionalHolidayAllowanceEntitlement)}</strong></div>
+    <div><span>Direito bruto total</span><strong>${eurFmt.format(holidayAllowanceEntitlementTotal)}</strong></div>
+    <div><span>Subsídio anteriormente recebido (pagamento único)</span><strong>− ${eurFmt.format(holidayLumpPaid)}</strong></div>
+    <div><span>Duodécimos estimados já recebidos</span><strong>− ${eurFmt.format(holidayDuosPaid)}</strong></div>
+    <div><span>Saldo aritmético (pode ser negativo)</span><strong>${eurFmt.format(holidayBalanceRaw)}</strong></div>
+    <div><span>Subsídio incluído no recibo final</span><strong>${eurFmt.format(holidayAllowanceDue)}</strong></div>
+    ${holidayBalanceRaw<0?`<p class="audit-alert">Saldo negativo de ${eurFmt.format(holidayBalanceRaw)}: recebimentos anteriores superiores ao direito bruto calculado. Este valor é mostrado para conferência e NÃO é descontado automaticamente do recibo. Qualquer recuperação exige análise jurídica e do processamento salarial.</p>`:''}
+    <small>Conta: ${eurFmt.format(holidayAllowanceEntitlementTotal)} − ${eurFmt.format(holidayLumpPaid)} − ${eurFmt.format(holidayDuosPaid)} = ${eurFmt.format(holidayBalanceRaw)}. O valor do recibo segue a separação entre subsídio vencido e proporcional prevista no modo selecionado.</small>`;
   els.trainingCreditPreview.textContent=eurFmt.format(trainingGross);
   els.trainingHoursTotal.textContent=`${trainingHours.toFixed(2)} h`;
   els.lines.innerHTML=lines.map(l=>`<tr><td>${l.name}${l.meta?`<small>${l.meta}</small>`:''}</td><td>${eurFmt.format(l.gross)}</td><td>${eurFmt.format(l.irs)}</td><td>${eurFmt.format(l.ss)}</td><td><strong>${eurFmt.format(l.net)}</strong></td></tr>`).join('');
@@ -672,6 +701,8 @@ function recalc(forceComp=false,renderTraining=true){
   if(els.netBreakdown && els.showNetBreakdown) els.netBreakdown.hidden=!els.showNetBreakdown.checked;
 
   const warnings=[];
+  if(holidayOverpayment>0) warnings.push(`Subsídio de férias: o saldo aritmético é negativo (${eurFmt.format(holidayBalanceRaw)}). Não foi efetuado qualquer desconto automático; confirma pagamentos prévios e eventual possibilidade legal de acerto.`);
+  if((vac.daysBalanceRaw||0)<0) warnings.push(`Férias: os dias gozados excedem o direito global estimado em ${fDays(-(vac.daysBalanceRaw||0))} dias. Não foi feito desconto automático.`);
   warnings.push(`IRS grupo normal: base ${eurFmt.format(normalTaxBaseWithExtra)} · taxa marginal ${normalRateInfo.marginal.toFixed(2)}% · taxa efetiva ${(normalTaxBaseWithExtra>0?normalIrsWithExtra/normalTaxBaseWithExtra*100:0).toFixed(2)}% · retenção ${eurFmt.format(normalIrsWithExtra)}. Cenário sem extra: base ${eurFmt.format(normalTaxBaseWithoutExtra)} · marginal ${normalRateInfoWithoutExtra.marginal.toFixed(2)}% · efetiva ${(normalTaxBaseWithoutExtra>0?normalIrsWithoutExtra/normalTaxBaseWithoutExtra*100:0).toFixed(2)}%. Subsídios de férias e Natal têm retenção autónoma.`);
   warnings.push(`Compensação para IRS: indemnização legal + extra são avaliadas em conjunto (${eurFmt.format(compensation)}). Limite fiscal estimado ${eurFmt.format(exemptLimit)}; apenas o excesso de ${eurFmt.format(taxableComp)} é tributável. A divisão desse excesso e do IRS entre as duas linhas é apenas visual para validação manual.`);
   if(els.terminationReason.value==='worker_resignation'){

@@ -19,7 +19,7 @@
   <main class="layout">
     <section class="panel form-panel">
       <div class="notice">
-        <strong>Versão v11:</strong> cálculo local de férias, subsídios, formação, compensação, IRS e Segurança Social. As férias e os proporcionais são agora derivados das datas do contrato e dos dias já gozados.
+        <strong>Versão v12:</strong> cálculo local de férias, subsídios, formação, compensação, IRS e Segurança Social. As férias e os proporcionais são agora derivados das datas do contrato e dos dias já gozados.
       </div>
 
       <h2>1. Contrato e remuneração</h2>
@@ -187,6 +187,13 @@
           <div><span>Compensação sujeita a IRS</span><strong id="compTaxable">€0,00</strong></div>
           <div><span>Antiguidade fiscal</span><strong id="serviceYears">0,00 anos</strong></div>
         </div>
+
+        <section class="audit-section">
+          <h3>Conferência de férias</h3>
+          <div id="vacationAudit" class="audit-grid"></div>
+          <h3>Conferência do subsídio de férias</h3>
+          <div id="holidayAudit" class="audit-grid"></div>
+        </section>
 
         <h3>Detalhe do recibo</h3>
         <div class="table-wrap">
