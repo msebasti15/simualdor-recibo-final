@@ -72,15 +72,11 @@ function annualTrainingHours(year){
 function estimatedTrainingEntitlement(row){
   const annual=annualTrainingHours(row.year);
   const type=els.contractType?.value || 'indefinite';
-  if(type==='indefinite'){
-    // Modo ACT: nos contratos sem termo, o simulador ACT considera o mínimo anual
-    // por cada ano civil apresentado, mesmo quando o ano de cessação é parcial.
-    return annual;
-  }
+  if(type==='indefinite') return els.trainingMethod.value==='civil' ? annual : round2(annual*(row.days/row.yearDays));
   // Art. 131.º/2: contratos a termo >= 3 meses têm mínimo proporcional à duração nesse ano.
   const contractStart=date(els.startDate.value), contractEnd=date(els.endDate.value);
   const totalDays=daysBetween(contractStart,new Date(contractEnd.getTime()+dayMs));
-  if(totalDays < 365.2425/4) return 0; // aproximação de 3 meses; abaixo disso não há mínimo legal.
+  if(contractEnd < addCalendarMonths(contractStart,3)) return 0; // 3 meses civis completos
   return round2(annual*(row.days/row.yearDays));
 }
 function trainingDebtRows(){
@@ -170,7 +166,7 @@ function vacationModel(start,end,baseMonthly){
   const annualDays=22;
   const fraction=cessationYearFraction(start,end);
   const propDays=annualDays*fraction;
-  const takenYear=Math.max(0,num('vacationTakenYear'));
+  const takenYear=Math.max(0,num('vacationTakenYear')); // no regime especial: férias gozadas em todo o contrato
   const jan1=new Date(end.getFullYear(),0,1,12);
   const hasVested=start<jan1;
   let vestedDays=hasVested?Math.max(0,annualDays-takenYear):0;
@@ -436,6 +432,11 @@ function recalc(forceComp=false,renderTraining=true){
   const weeklyHours=Math.max(1,num('weeklyHours')||40);
   const trainingHourly=monthly>0 ? round2(monthly*12/(52*weeklyHours)) : 0;
   els.trainingHourly.value=trainingHourly.toFixed(2);
+  const specialVacation=validDates&&end>=start&&isShortVacationCase(start,end);
+  els.vacationTakenLabel.textContent=specialVacation
+    ? 'Férias gozadas durante TODA a duração do contrato (dias úteis)'
+    : 'Férias já gozadas no ano da cessação (dias úteis)';
+  els.trainingMethodWrap.hidden=els.contractType.value!=='indefinite';
   updateSubsidyUI(start,end);
   if(renderTraining) renderTrainingYears();
 
@@ -622,12 +623,13 @@ function recalc(forceComp=false,renderTraining=true){
     addLine(lines,'Créditos de formação',trainingGross,normalAlloc.training,0,
       `${rateMeta('Categoria A · grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · sem SS segundo jurisprudência TCAS de 26-09-2024`,'training');
 
-  addLine(lines,'Indemnização legal',legalComp,normalAlloc.legalComp,0,
-    `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · compensação total ${eurFmt.format(compensation)} · limite ${eurFmt.format(exemptLimit)} · excesso tributável total ${eurFmt.format(taxableComp)} · quota visual desta linha ${eurFmt.format(taxableLegalComp)}`,'legalComp');
+  const compSsBase=els.agreementSs.value==='subject' ? compensation : 0;
+  addLine(lines,'Indemnização legal',legalComp,normalAlloc.legalComp,els.agreementSs.value==='subject'?legalComp:0,
+    `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · compensação total ${eurFmt.format(compensation)} · limite ${eurFmt.format(exemptLimit)} · excesso tributável total ${eurFmt.format(taxableComp)} · quota visual desta linha ${eurFmt.format(taxableLegalComp)} · SS conforme enquadramento selecionado`,'legalComp');
 
   if(extraComp>0)
-    addLine(lines,'Indemnização extra',extraComp,normalAlloc.extraComp,0,
-      `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · compensação total ${eurFmt.format(compensation)} · limite ${eurFmt.format(exemptLimit)} · excesso tributável total ${eurFmt.format(taxableComp)} · quota visual desta linha ${eurFmt.format(taxableExtraComp)}`,'extraComp');
+    addLine(lines,'Indemnização extra',extraComp,normalAlloc.extraComp,els.agreementSs.value==='subject'?extraComp:0,
+      `${rateMeta('Grupo normal IRS',normalTaxBaseWithExtra,normalIrsWithExtra,status,deps)} · compensação total ${eurFmt.format(compensation)} · limite ${eurFmt.format(exemptLimit)} · excesso tributável total ${eurFmt.format(taxableComp)} · quota visual desta linha ${eurFmt.format(taxableExtraComp)} · SS conforme enquadramento selecionado`,'extraComp');
 
   if(notice.value>0)
     addLine(lines,'Aviso prévio não cumprido',-notice.value,0,0,
@@ -654,7 +656,7 @@ function recalc(forceComp=false,renderTraining=true){
   // do grupo normal sem a parcela tributável incremental do extra.
   const netWithoutExtra=round2(
     totals.gross-extraComp
-    - totals.ss
+    - (totals.ss-(els.agreementSs.value==='subject'?round2(extraComp*num('ssRate')/100):0))
     - (totals.irs-normalIrsWithExtra+normalIrsWithoutExtra)
   );
   const netExtraDifference=round2(netWithExtra-netWithoutExtra);
@@ -680,6 +682,7 @@ function recalc(forceComp=false,renderTraining=true){
     warnings.push('Resolução pelo trabalhador com justa causa: a indemnização automática usa o art. 396.º (15–45 dias/ano ou fração, mínimo 3 meses). A existência de justa causa e o número de dias aplicável dependem do caso concreto.');
     if(els.contractType.value!=='indefinite') warnings.push('Contrato a termo + resolução com justa causa: pode existir um mínimo adicional ligado às retribuições vincendas até ao termo; como o simulador não conhece a data contratual prevista para o termo, confirma ou substitui manualmente a indemnização.');
   }
+  if(els.agreementSs.value==='subject') warnings.push('Segurança Social: selecionaste incidência contributiva sobre a compensação; confirma se o acordo dá direito a prestações de desemprego e a natureza de cada verba.');
   if(otherIrsOnly>0) warnings.push('Outros valores do último salário: a aplicação assume, conforme indicado no campo, incidência em IRS e ausência de incidência em Segurança Social. Confirma a classificação da verba no recibo/contrato, porque a incidência depende da natureza concreta do pagamento.');
   if(mealAllowance>0 && mealAllowanceTaxable===0) warnings.push('Subsídio de alimentação: foi considerada isenta a totalidade do valor introduzido. Se existir uma parcela acima do limite de isenção aplicável, indica-a no campo “Parcela sujeita a IRS/SS”.');
   if(start<date('2013-10-01')) warnings.push('Contrato anterior a 1/10/2013: o regime transitório da compensação tem limites e particularidades. Confirma o valor no simulador da ACT; o campo continua editável.');
@@ -689,7 +692,7 @@ function recalc(forceComp=false,renderTraining=true){
   if(els.usedRelief5y.checked) warnings.push('Assinalaste utilização do regime fiscal nos últimos 5 anos: nesta simulação a compensação é tratada como totalmente tributável para IRS.');
   if(els.newLink24m.checked) warnings.push('Assinalaste novo vínculo com a mesma entidade nos 24 meses seguintes: nesta simulação a compensação é tratada como totalmente tributável para IRS.');
   if(normalIrsOverride!==null) warnings.push('Foi usado um override manual para o IRS total do grupo normal. O cenário “sem extra” continua a ser recalculado automaticamente pelas tabelas de 2026, pelo que o comparativo deve ser interpretado como estimativa.');
-  if(els.contractType.value==='indefinite') warnings.push('Formação: em modo ACT, o contrato sem termo considera 40 h por cada ano civil da janela, incluindo anos parciais.');
+  if(els.contractType.value==='indefinite') warnings.push(els.trainingMethod.value==='civil' ? 'Formação: 40 h por ano civil abrangido, incluindo anos incompletos; valida a interpretação aplicável.' : 'Formação: horas proporcionais aos dias trabalhados nos anos civis incompletos; existem interpretações divergentes para contratos sem termo.');
   else warnings.push('Formação: nos contratos a termo com duração igual ou superior a 3 meses, o artigo 131.º, n.º 2 prevê proporcionalidade no ano.');
   warnings.push('A retenção de IRS apresentada é uma estimativa do recibo; a liquidação anual de IRS pode produzir um resultado diferente.');
   els.warnings.innerHTML=warnings.map((w,i)=>`<div class="warning ${i>1?'info':''}">${w}</div>`).join('');

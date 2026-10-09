@@ -115,3 +115,14 @@ Foi acrescentada a escolha da iniciativa da cessação.
 - em contrato a termo é apresentado aviso para validação manual do eventual mínimo ligado às retribuições vincendas.
 
 A existência de justa causa e o valor definitivo da indemnização dependem dos factos concretos e podem exigir validação jurídica.
+
+## v10.1 — contratos com anos civis incompletos
+A formação é estimada proporcionalmente aos dias de cada ano civil abrangidos pelo contrato, incluindo entrada e saída no ano seguinte. Para contratos sem termo esta é uma opção de estimativa, sujeita a interpretação; o art. 131.º/2 prevê explicitamente proporcionalidade nos contratos a termo. A verificação de três meses nos contratos a termo passa a ser feita por meses de calendário.
+
+O cálculo de férias já aplicava o limite do art. 245.º/3 à duração global do contrato quando a cessação ocorre no ano civil seguinte à admissão ou a duração é até 12 meses; mantém-se essa regra e a dedução das férias já gozadas.
+
+## v11 — escolha de método de formação, férias e SS do acordo
+- Contrato sem termo: selecionar 40 horas por ano civil abrangido ou proporção por dias de calendário; contrato a termo mantém a proporção legal.
+- Regra especial de férias do art. 245.º/3: campo de férias gozadas explicitamente refere todo o contrato; fora do regime especial refere ano de cessação.
+- Segurança Social da compensação por acordo: opção não sujeita/sujeita, consoante enquadramento do art. 46.º/2/v do Código Contributivo. Não assumir que todo o mútuo acordo é isento.
+- IRS: retenção normal agregada e subsídios autónomos. A retenção é estimativa e exige conferência com as tabelas e processamento do empregador.

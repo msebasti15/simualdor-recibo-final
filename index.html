@@ -19,7 +19,7 @@
   <main class="layout">
     <section class="panel form-panel">
       <div class="notice">
-        <strong>Versão v4:</strong> cálculo local de férias, subsídios, formação, compensação, IRS e Segurança Social. As férias e os proporcionais são agora derivados das datas do contrato e dos dias já gozados.
+        <strong>Versão v11:</strong> cálculo local de férias, subsídios, formação, compensação, IRS e Segurança Social. As férias e os proporcionais são agora derivados das datas do contrato e dos dias já gozados.
       </div>
 
       <h2>1. Contrato e remuneração</h2>
@@ -70,7 +70,7 @@
           <input id="otherIrsOnly" type="number" min="0" step="0.01" value="0">
           <small>Ex.: subsídio de remote work, transporte ou outra verba que no teu recibo esteja sujeita a IRS mas não a Segurança Social.</small>
         </label>
-        <label>Férias já gozadas (dias úteis)<input id="vacationTakenYear" type="number" min="0" max="30" step="0.5" value="0"></label>
+        <label><span id="vacationTakenLabel">Férias já gozadas no ano da cessação (dias úteis)</span><input id="vacationTakenYear" type="number" min="0" max="30" step="0.5" value="0"></label>
         <label>Regime de pagamento dos subsídios
           <select id="subsidyMode">
             <option value="full" selected>100% pagos por inteiro</option>
@@ -95,10 +95,16 @@
         </label>
         <label>Compensação adicional / acordo (€)<input id="extraComp" type="number" min="0" step="0.01" value="0"></label>
       </div>
-      <p id="compensationHint" class="hint">A compensação legal é estimada localmente. Para contratos anteriores a 2013, CCTs ou situações especiais, confirma o valor com o simulador ACT e podes substituir manualmente o campo.</p>
+      <label>Segurança Social sobre compensação por mútuo acordo
+<select id="agreementSs"><option value="exempt" selected>Não sujeita (sem enquadramento contributivo aplicável)</option><option value="subject">Sujeita a SS (acordo com direito a prestações de desemprego — art. 46.º/2/v)</option></select>
+<small>A compensação por acordo pode integrar a base contributiva em situações com direito a prestações de desemprego. Confirma o enquadramento concreto; o IRS é independente.</small></label>
+<p id="compensationHint" class="hint">A compensação legal é estimada localmente. Para contratos anteriores a 2013, CCTs ou situações especiais, confirma o valor com o simulador ACT e podes substituir manualmente o campo.</p>
 
       <h2>4. Formação profissional</h2>
-      <p class="hint">São apresentados automaticamente os últimos 5 anos civis abrangidos pelo contrato, como no simulador da ACT. Em contrato sem termo, o modo ACT considera 40 h por ano civil, incluindo o ano parcial de admissão/cessação. Nos contratos a termo, o mínimo é proporcional à duração do contrato nesse ano. Indica as horas efetivamente ministradas; por defeito ficam a 0.</p>
+      <label id="trainingMethodWrap">Método de formação — contrato sem termo
+<select id="trainingMethod"><option value="civil" selected>40 h por ano civil abrangido (leitura literal / comparação ACT)</option><option value="proportional">Proporcional aos dias de cada ano civil (jurisprudência)</option></select>
+<small>A proporcionalidade é expressamente prevista no artigo 131.º/2 para contratos a termo; em contratos sem termo, a aplicação nos anos incompletos é discutida. Compara os dois métodos.</small></label>
+<p class="hint">Indica as horas de formação efetivamente recebidas em cada ano. A janela de 5 anos é indicativa e pode exigir validação das datas de constituição/caducidade dos créditos.</p>
       <div class="training-table-wrap">
         <table class="training-table">
           <thead><tr><th>Ano</th><th>Período abrangido</th><th>Direito estimado</th><th>Horas realizadas</th><th>Horas em dívida</th></tr></thead>
